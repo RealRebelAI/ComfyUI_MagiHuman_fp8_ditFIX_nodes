@@ -1,1 +1,799 @@
-
+{
+  "id": "6f5f68b4-396c-456c-9e91-40259353f153",
+  "revision": 0,
+  "last_node_id": 18,
+  "last_link_id": 30,
+  "nodes": [
+    {
+      "id": 10,
+      "type": "CreateVideo",
+      "pos": [
+        21409.62887850646,
+        -863.3826177023474
+      ],
+      "size": [
+        270,
+        78
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 4
+        },
+        {
+          "name": "audio",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": 5
+        }
+      ],
+      "outputs": [
+        {
+          "name": "VIDEO",
+          "type": "VIDEO",
+          "links": [
+            10
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CreateVideo"
+      },
+      "widgets_values": [
+        25
+      ]
+    },
+    {
+      "id": 6,
+      "type": "MagiHuman_DECO_AUDIO",
+      "pos": [
+        21398.12319000492,
+        -701.4091543688814
+      ],
+      "size": [
+        215.9732421875,
+        46
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "audio_vae",
+          "type": "VAE",
+          "link": 6
+        },
+        {
+          "name": "audio_latents",
+          "type": "LATENT",
+          "link": 23
+        }
+      ],
+      "outputs": [
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "links": [
+            5
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MagiHuman_DECO_AUDIO"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 11,
+      "type": "SaveVideo",
+      "pos": [
+        21809.546376920058,
+        -869.8874470999478
+      ],
+      "size": [
+        452.08971197094434,
+        449.01586544756555
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "video",
+          "type": "VIDEO",
+          "link": 10
+        }
+      ],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "video/ComfyUI",
+        "auto",
+        "auto"
+      ]
+    },
+    {
+      "id": 5,
+      "type": "MagiHuman_EN_DECO_VIDEO",
+      "pos": [
+        21392.957633169644,
+        -979.9516553568423
+      ],
+      "size": [
+        238.9556640625,
+        46
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 8
+        },
+        {
+          "name": "latent",
+          "type": "LATENT",
+          "link": 24
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": [
+            4
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MagiHuman_EN_DECO_VIDEO"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 2,
+      "type": "MagiHuman_SM_VAE",
+      "pos": [
+        21002.542797760572,
+        -994.4478447901264
+      ],
+      "size": [
+        270,
+        82
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "vae",
+          "type": "VAE",
+          "links": [
+            8,
+            29
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MagiHuman_SM_VAE"
+      },
+      "widgets_values": [
+        "Wan2.2_VAE.pth",
+        "none"
+      ]
+    },
+    {
+      "id": 13,
+      "type": "MagiHuman_LATENTS",
+      "pos": [
+        20378.507805314817,
+        -663.2036798768751
+      ],
+      "size": [
+        270,
+        214
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "vae",
+          "shape": 7,
+          "type": "VAE",
+          "link": 29
+        },
+        {
+          "name": "audio_vae",
+          "shape": 7,
+          "type": "VAE",
+          "link": null
+        },
+        {
+          "name": "image",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 30
+        },
+        {
+          "name": "audio",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "latent",
+          "type": "LATENT",
+          "links": [
+            14
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MagiHuman_LATENTS"
+      },
+      "widgets_values": [
+        448,
+        256,
+        896,
+        512,
+        10
+      ]
+    },
+    {
+      "id": 16,
+      "type": "LoadImage",
+      "pos": [
+        20690.58028103153,
+        -1098.0642316852266
+      ],
+      "size": [
+        270,
+        314
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            30
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "u=3477957239,142631668&fm=3074&app=3074&f=JPEG.jpg",
+        "image"
+      ]
+    },
+    {
+      "id": 17,
+      "type": "Note",
+      "pos": [
+        19395.273160215227,
+        -1010.0782036538263
+      ],
+      "size": [
+        762.1634821506232,
+        185.4526287832723
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "A young man with short, dark hair and a neatly trimmed beard, wearing a bright yellow polo shirt, sits in a stationary position. His disposition is earnest and slightly agitated, but his torso remains completely still within the frame. He maintains a fixed posture as he prepares to speak. The scene is captured in a static medium close-up shot, focusing on his upper torso and face. He speaks with a rapid, slightly high-pitched, and emphatic tone, his mouth opening wide to articulate each word with precision, his brow furrowing slightly as he says, \"有 的 人 在 一 起 生 活 一 辈 子，还 带 着 假 面 具 呢，比 如 说 你 十 年 了。\" His eyes are wide and fixed toward the right, conveying a sense of frustration. The lip muscles show distinct dynamics as he articualtes the CJK characters. As he finishes the sentence, his voice abruptly cuts off, and a sudden, sharp, high-pitched electronic screech pierces the air. The background remains a static, blurred dark blue scene throughout the performance.\n\nDialogue: <Young man in yellow polo, Mandarin>: \"有 的 人 在 一 起 生 活 一 辈 子，还 带 着 假 面 具 呢，比 如 说 你 十 年 了。\"\n\nBackground Sound: <A sudden, sharp, high-pitched electronic screech>"
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 4,
+      "type": "MagiHuman_SM_AUDIO_VAE",
+      "pos": [
+        21041.269948082463,
+        -601.7658862493506
+      ],
+      "size": [
+        289.733984375,
+        58
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "audio_vae",
+          "type": "VAE",
+          "links": [
+            6
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MagiHuman_SM_AUDIO_VAE"
+      },
+      "widgets_values": [
+        "sd_audio.safetensors"
+      ]
+    },
+    {
+      "id": 14,
+      "type": "MagiHuman_SM_SRSampler",
+      "pos": [
+        21057.14873594109,
+        -844.9930842957441
+      ],
+      "size": [
+        286.35703125,
+        122
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 15
+        },
+        {
+          "name": "latents",
+          "type": "LATENT",
+          "link": 16
+        },
+        {
+          "name": "audio_latents",
+          "type": "LATENT",
+          "link": 17
+        }
+      ],
+      "outputs": [
+        {
+          "name": "latent",
+          "type": "LATENT",
+          "links": [
+            24
+          ]
+        },
+        {
+          "name": "audio_latents",
+          "type": "LATENT",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MagiHuman_SM_SRSampler"
+      },
+      "widgets_values": [
+        5,
+        true
+      ]
+    },
+    {
+      "id": 15,
+      "type": "MagiHuman_SM_ENCODER",
+      "pos": [
+        19719.400858859422,
+        -648.3832780883052
+      ],
+      "size": [
+        472.7911672291775,
+        575.8542752314257
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 26
+        }
+      ],
+      "outputs": [
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "links": [
+            27
+          ]
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "links": [
+            25,
+            28
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MagiHuman_SM_ENCODER"
+      },
+      "widgets_values": [
+        true,
+        "A young woman with short, dark hair and a neatly trimmed beard, wearing a bright yellow polo shirt, sits in a stationary position. Hers disposition is earnest and slightly agitated, but his torso remains completely still within the frame. Her maintains a fixed posture as he prepares to speak. The scene is captured in a static medium close-up shot, focusing on his upper torso and face. Her speaks with a rapid, slightly high-pitched, and emphatic tone, hers mouth opening wide to articulate each word with precision, his brow furrowing slightly as he says, \"有 的 人 在 一 起 生 活 一 辈 子，还 带 着 假 面 具 呢，比 如 说 你 十 年 了。\" Hers eyes are wide and fixed toward the right, conveying a sense of frustration. The lip muscles show distinct dynamics as her articualtes the CJK characters. As her finishes the sentence, his voice abruptly cuts off, and a sudden, sharp, high-pitched electronic screech pierces the air. The background remains a static, blurred dark blue scene throughout the performance.\n\nDialogue: <Young woman in yellow polo, Mandarin>: \"有 的 人 在 一 起 生 活 一 辈 子，还 带 着 假 面 具 呢，比 如 说 你 十 年 了。\"\n\nBackground Sound: <A sudden, sharp, high-pitched electronic screech>",
+        "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards, low quality, worst quality, poor quality, noise, background noise, hiss, hum, buzz, crackle, static, compression artifacts, MP3 artifacts, digital clipping, distortion, muffled, muddy, unclear, echo, reverb, room echo, over-reverberated, hollow sound, distant, washed out, harsh, shrill, piercing, grating, tinny, thin sound, boomy, bass-heavy, flat EQ, over-compressed, abrupt cut, jarring transition, sudden silence, looping artifact, music, instrumental, sirens, alarms, crowd noise, unrelated sound effects, chaotic, disorganized, messy, cheap sound , emotionless, flat delivery, deadpan, lifeless, apathetic, robotic, mechanical, monotone, flat intonation, undynamic, boring, reading from a script, AI voice, synthetic, text-to-speech, TTS, insincere, fake emotion, exaggerated, overly dramatic, melodramatic, cheesy, cringey, hesitant, unconfident, tired, weak voice, stuttering, stammering, mumbling, slurred speech, mispronounced, bad articulation, lisp, vocal fry, creaky voice, mouth clicks, lip smacks, wet mouth sounds, heavy breathing, audible inhales, plosives, p-pops, coughing, clearing throat, sneezing, speaking too fast, rushed, speaking too slow, dragged out, unnatural pauses, awkward silence, choppy, disjointed, multiple speakers, two voices, background talking, out of tune, off-key, autotune artifacts"
+      ]
+    },
+    {
+      "id": 12,
+      "type": "PreviewAny",
+      "pos": [
+        19309.069577754923,
+        -384.9602421855325
+      ],
+      "size": [
+        397.66903925054066,
+        235.35596028387727
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 25
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "widgets_values": [
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "id": 1,
+      "type": "MagiHuman_SM_Model",
+      "pos": [
+        20341.15836473414,
+        -923.6019575320578
+      ],
+      "size": [
+        270,
+        130
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "links": [
+            1,
+            15
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MagiHuman_SM_Model"
+      },
+      "widgets_values": [
+        "distill-merger_bf16.safetensors",
+        "none",
+        "none",
+        "none"
+      ]
+    },
+    {
+      "id": 9,
+      "type": "MagiHuman_SM_KSampler",
+      "pos": [
+        20726.889649338173,
+        -725.6200032349908
+      ],
+      "size": [
+        278.1060546875,
+        238
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 1
+        },
+        {
+          "name": "latents",
+          "type": "LATENT",
+          "link": 14
+        },
+        {
+          "name": "positive",
+          "shape": 7,
+          "type": "CONDITIONING",
+          "link": 27
+        },
+        {
+          "name": "negative",
+          "shape": 7,
+          "type": "CONDITIONING",
+          "link": 28
+        }
+      ],
+      "outputs": [
+        {
+          "name": "latent",
+          "type": "LATENT",
+          "links": [
+            16
+          ]
+        },
+        {
+          "name": "audio_latents",
+          "type": "LATENT",
+          "links": [
+            17,
+            23
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MagiHuman_SM_KSampler"
+      },
+      "widgets_values": [
+        8,
+        987103737,
+        "randomize",
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "id": 3,
+      "type": "MagiHuman_SM_Clip",
+      "pos": [
+        19339.60210925152,
+        -601.9732657980383
+      ],
+      "size": [
+        302.45264064869116,
+        82
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "links": [
+            26
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MagiHuman_SM_Clip"
+      },
+      "widgets_values": [
+        "none",
+        "t5gemma-9b-9b-ul2-Q6_K.gguf"
+      ]
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      9,
+      0,
+      "MODEL"
+    ],
+    [
+      4,
+      5,
+      0,
+      10,
+      0,
+      "IMAGE"
+    ],
+    [
+      5,
+      6,
+      0,
+      10,
+      1,
+      "AUDIO"
+    ],
+    [
+      6,
+      4,
+      0,
+      6,
+      0,
+      "VAE"
+    ],
+    [
+      8,
+      2,
+      0,
+      5,
+      0,
+      "VAE"
+    ],
+    [
+      10,
+      10,
+      0,
+      11,
+      0,
+      "VIDEO"
+    ],
+    [
+      14,
+      13,
+      0,
+      9,
+      1,
+      "LATENT"
+    ],
+    [
+      15,
+      1,
+      0,
+      14,
+      0,
+      "MODEL"
+    ],
+    [
+      16,
+      9,
+      0,
+      14,
+      1,
+      "LATENT"
+    ],
+    [
+      17,
+      9,
+      1,
+      14,
+      2,
+      "LATENT"
+    ],
+    [
+      23,
+      9,
+      1,
+      6,
+      1,
+      "LATENT"
+    ],
+    [
+      24,
+      14,
+      0,
+      5,
+      1,
+      "LATENT"
+    ],
+    [
+      25,
+      15,
+      1,
+      12,
+      0,
+      "CONDITIONING"
+    ],
+    [
+      26,
+      3,
+      0,
+      15,
+      0,
+      "CLIP"
+    ],
+    [
+      27,
+      15,
+      0,
+      9,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      28,
+      15,
+      1,
+      9,
+      3,
+      "CONDITIONING"
+    ],
+    [
+      29,
+      2,
+      0,
+      13,
+      0,
+      "VAE"
+    ],
+    [
+      30,
+      16,
+      0,
+      13,
+      2,
+      "IMAGE"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Group",
+      "bounding": [
+        20214.584815468257,
+        -1047.7825086984717,
+        2072.432785223922,
+        647.4488082735755
+      ],
+      "color": "#3f789e",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "Group",
+      "bounding": [
+        19333.93948296616,
+        -701.0038213654184,
+        846.4358039225845,
+        605.9325240095983
+      ],
+      "color": "#3f789e",
+      "font_size": 24,
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.5357282704314386,
+      "offset": [
+        -18768.343453129437,
+        1654.3788017279555
+      ]
+    },
+    "frontendVersion": "1.42.8",
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": true,
+    "VHS_KeepIntermediate": true
+  },
+  "version": 0.4
+}
