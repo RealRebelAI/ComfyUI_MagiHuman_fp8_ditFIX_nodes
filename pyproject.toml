@@ -1,0 +1,16 @@
+[project]
+name = "magihuman"
+description = "Speed by Simplicity: A Single-Stream Architecture for Fast Audio-Video Generative Foundation Model"
+version = "1.0.0"
+license = {file = "LICENSE"}
+dependencies = ["accelerate", "av", "beautifulsoup4", "boto3", "debugpy", "depyf", "diffusers", "ffmpeg-python", "ftfy", "graphviz", "imageio[ffmpeg]", "loguru", "mosaicml_streaming", "packaging>=24.2", "pandas", "psycopg2-binary", "pydantic", "pydantic-settings", "redis", "redislite", "rich", "sentencepiece", "setuptools>=78.1.1", "timm", "torchao", "transformers", "unfoldNd", "versioningit", "openai-whisper"]
+
+[project.urls]
+Repository = "https://github.com/smthemex/ComfyUI_MagiHuman"
+#  Used by Comfy Registry https://registry.comfy.org
+
+[tool.comfy]
+PublisherId = "smthemex"
+DisplayName = "ComfyUI_MagiHuman"
+Icon = ""
+includes = []
