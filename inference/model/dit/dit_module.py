@@ -23,11 +23,11 @@ from einops import rearrange, repeat
 from ...common import Modality, VarlenHandler, is_hopper_arch
 from ...infra.parallelism import ulysses_scheduler
 # from magi_compiler import magi_compile
-# from magi_compiler.api import magi_register_custom_op
+from magi_compiler.api import magi_register_custom_op
 #from magi_compiler.config import CompileConfig
 from torch import Tensor
 from torch.nn import Parameter
-
+import copy
 
 class BlockGPUManager:
     def __init__(self, device="cuda", block_group_size=1):
@@ -44,14 +44,8 @@ class BlockGPUManager:
         self._initialize_submodule()
         return self
     
-
     def _collect_managed_modules(self, transformer_model):
         self.submodule = []
-        # self.managed_modules=[]
-        # # for i, block in enumerate(transformer_model.block.layers):
-        # #     self.managed_modules.append(block)
-
-        # self.managed_modules = list(transformer_model.block.layers)
         self._original_model_ref = transformer_model
         self._original_layers_ref = transformer_model.block.layers
     
@@ -65,13 +59,10 @@ class BlockGPUManager:
     def _get_layer(self, layer_index):
         """按需获取层，避免一次性加载所有层"""
         if self.managed_modules[layer_index] is None:
-            # 深拷贝当前层
-            import copy
+            #self.managed_modules[layer_index] = self._original_layers_ref[layer_index]
             self.managed_modules[layer_index] = copy.deepcopy(self._original_layers_ref[layer_index])
-            # 立即移动到目标设备
             self.managed_modules[layer_index].to(self.device)
         return self.managed_modules[layer_index]
-
 
 
     def _initialize_submodule(self):
@@ -453,7 +444,7 @@ HAS_MAGI_ATTENTION = importlib.util.find_spec("magi_attention") is not None
 HAS_FA3 = importlib.util.find_spec("flash_attn_interface") is not None
 
 
-#@magi_register_custom_op(name="infra::flash_attn_func", is_subgraph_boundary=True)
+@magi_register_custom_op(name="infra::flash_attn_func", is_subgraph_boundary=True)
 def flash_attn_func(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor) -> torch.Tensor:
     if HAS_FA3 and is_hopper_arch():
         from flash_attn_interface import flash_attn_func as fa3_flash_attn_func
@@ -541,12 +532,12 @@ def _flex_flash_attn_func_infer_output_meta(
     return output, output_lse
 
 
-#@magi_register_custom_op(
-#     name="infra::flex_flash_attn_func",
-#     mutates_args=(),
-#     infer_output_meta_fn=_flex_flash_attn_func_infer_output_meta,
-#     is_subgraph_boundary=True,
-# )
+@magi_register_custom_op(
+    name="infra::flex_flash_attn_func",
+    mutates_args=(),
+    infer_output_meta_fn=_flex_flash_attn_func_infer_output_meta,
+    is_subgraph_boundary=True,
+)
 def flex_flash_attn_func(
     query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, q_ranges: torch.Tensor, k_ranges: torch.Tensor
 ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -562,12 +553,12 @@ def _attention_with_cp_infer_output_meta(q: torch.Tensor, *args, **kwargs) -> to
     return torch.empty_like(q, dtype=torch.bfloat16).squeeze(0)
 
 
-# @magi_register_custom_op(
-#     name="infra::flash_attn_with_cp",
-#     mutates_args=(),
-#     infer_output_meta_fn=_attention_with_cp_infer_output_meta,
-#     is_subgraph_boundary=True,
-# )
+@magi_register_custom_op(
+    name="infra::flash_attn_with_cp",
+    mutates_args=(),
+    infer_output_meta_fn=_attention_with_cp_infer_output_meta,
+    is_subgraph_boundary=True,
+)
 def flash_attn_with_cp(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, cp_split_sizes: List[int]) -> torch.Tensor:
     q, k, v = q.to(torch.bfloat16), k.to(torch.bfloat16), v.to(torch.bfloat16)
 
@@ -589,12 +580,12 @@ def flash_attn_with_cp(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, cp_spl
     return self_attn_out
 
 
-# @magi_register_custom_op(
-#     name="infra::flex_flash_attn_with_cp",
-#     mutates_args=(),
-#     infer_output_meta_fn=_attention_with_cp_infer_output_meta,
-#     is_subgraph_boundary=True,
-# )
+@magi_register_custom_op(
+    name="infra::flex_flash_attn_with_cp",
+    mutates_args=(),
+    infer_output_meta_fn=_attention_with_cp_infer_output_meta,
+    is_subgraph_boundary=True,
+)
 def flex_flash_attn_with_cp(
     q: torch.Tensor,
     k: torch.Tensor,
