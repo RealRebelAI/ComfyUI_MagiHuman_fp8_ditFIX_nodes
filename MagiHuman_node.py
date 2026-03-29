@@ -224,6 +224,7 @@ class MagiHuman_SM_KSampler(io.ComfyNode):
                 io.Int.Input("steps", default=8, min=1, max=nodes.MAX_RESOLUTION,step=1,display_mode=io.NumberDisplay.number),
                 io.Int.Input("seed", default=0, min=0, max=MAX_SEED,display_mode=io.NumberDisplay.number),
                 io.Boolean.Input("offload", default=True),
+                io.Int.Input("offload_block_num", default=1, min=1, max=40,step=1,display_mode=io.NumberDisplay.number),
                 io.Boolean.Input("save_latents", default=True),
                 io.Boolean.Input("pass_stage1", default=False),
                 io.Conditioning.Input("positive",optional=True),
@@ -235,7 +236,7 @@ class MagiHuman_SM_KSampler(io.ComfyNode):
             ],
         )
     @classmethod
-    def execute(cls, model,latents,steps,seed,offload,save_latents,pass_stage1,positive=None,negative=None,) -> io.NodeOutput:
+    def execute(cls, model,latents,steps,seed,offload,offload_block_num,save_latents,pass_stage1,positive=None,negative=None,) -> io.NodeOutput:
         if positive is None:
             positive,negative=read_lat_emb("embeds", positive, negative,device)
         clear_comfyui_cache()
@@ -244,9 +245,9 @@ class MagiHuman_SM_KSampler(io.ComfyNode):
         else:
             latents["positives"]=positive
             latents["negatives"]=negative
-            video_lat, audio_lat,params=infer_magihuman(model,seed,latents,steps,sr_steps=50,offload=offload)
+            video_lat, audio_lat,params=infer_magihuman(model,seed,latents,steps,sr_steps=50,offload=offload,offload_block_num=offload_block_num)
             video_latents={"samples":video_lat}
-            if params:
+            if params:  
                 latents["params"]=params
             latents["samples"]=audio_lat
             latents["seed"]=seed
