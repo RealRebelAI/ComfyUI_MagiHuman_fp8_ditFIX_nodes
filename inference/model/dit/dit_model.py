@@ -101,7 +101,7 @@ def get_dit(model_config, engine_config,torch_type,offload=False,):
     for name, module in model.named_modules():
         if module.__class__.__name__ in ['BaseLinear', 'NativeMoELinear']:
             # Uses LEGAL PyTorch naming
-            module.register_buffer('weight_scale', torch.ones(1, dtype=torch.float32))
+            module.register_buffer('weight_scale', torch.tensor(1.0, dtype=torch.float32))
 
     # --- ORIGINAL LOADER ---
     model = load_model_checkpoint(model, engine_config)
