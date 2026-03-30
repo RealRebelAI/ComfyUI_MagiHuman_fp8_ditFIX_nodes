@@ -37,7 +37,7 @@ Update
 -----
   In the ./ComfyUI/custom_nodes directory, run the following:   
 ```
-git clone https://github.com/smthemex/ComfyUI_MagiHuman
+git clone https://github.com/RealRebelAI/ComfyUI_MagiHuman
 ```
 2.requirements  
 ----
