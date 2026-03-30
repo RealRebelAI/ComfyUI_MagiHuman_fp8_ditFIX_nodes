@@ -58,47 +58,39 @@ def _load_shard(shard_path, param_names, num_threads=None):
 def load_sharded_safetensors_parallel_with_progress(checkpoint_dir):
     from safetensors.torch import load_file
     import torch
-    
-    # Use a standard CPU device to prevent the GPU from spiking too early
-    device = "cpu"
+    import gc
 
-    # 1. Handle Single File
+    # 1. Handle Single File Case
     if os.path.isfile(checkpoint_dir):
-        # mmap=False is the key to stopping the "Access Violation" and "Panic"
-        return load_file(checkpoint_dir, device=device)
+        # Loading with mmap=False is slower but stops the "Access Violation"
+        return load_file(checkpoint_dir, device="cpu")
 
+    # 2. Handle Sharded Case
     index_path = os.path.join(checkpoint_dir, "model.safetensors.index.json")
-    if not os.path.exists(index_path):
-        # Look for your specific final merged file
-        final_file = os.path.join(checkpoint_dir, "davinci_distilled_FINAL.safetensors")
-        if os.path.exists(final_file):
-            return load_file(final_file, device=device)
-        raise FileNotFoundError(f"No model found in {checkpoint_dir}")
-
-    # 2. Handle Shards (The RAM-Safe way)
     with open(index_path, "r") as f:
         index = json.load(f)
 
     state_dict = {}
     shard_files = sorted(list(set(index["weight_map"].values())))
-    print(f"Lazy-loading {len(shard_files)} shards to save 16GB RAM...")
+    print(f"REBEL AI MODE: Safely streaming {len(shard_files)} shards...")
 
-    for shard_file in tqdm(shard_files, desc="Streaming Shards"):
+    for shard_file in tqdm(shard_files, desc="RAM-Safe Load"):
         shard_path = os.path.join(checkpoint_dir, shard_file)
         param_names = [k for k, v in index["weight_map"].items() if v == shard_file]
         
-        # We load without mmap to avoid the Windows Access Violation
-        current_weights = load_file(shard_path, device=device)
+        # Load the shard to CPU
+        current_shard = load_file(shard_path, device="cpu")
         
         for name in param_names:
-            # .clone() prevents the "deallocated bytearray" error by making a real copy
-            state_dict[name] = current_weights[name].clone()
-            
-        del current_weights
+            # The .clone() is CRITICAL. It breaks the link to the file 
+            # so the "deallocated bytearray" error can't trigger.
+            state_dict[name] = current_shard[name].clone()
+        
+        # Immediate cleanup
+        del current_shard
         gc.collect()
 
     return state_dict
-
 
 def load_model_checkpoint(model, engine_config: EngineConfig):
     print_rank_0("Loading checkpoint sequentially...")
