@@ -146,5 +146,18 @@ class MagiPipeline:
 
         # if torch.distributed.is_initialized():
         #     torch.distributed.barrier()
+
+        print("Sampling complete. Nuking DiT models from VRAM for VAE decoding...")
+        self.model = None
+        self.sr_model = None
+        self.evaluator = None
+        
+        import gc
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
+        print("VRAM successfully cleared. Handing off to VAE...")
+
         return latent_video, latent_audio,params
 
