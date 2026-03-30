@@ -67,7 +67,7 @@ class MagiPipeline:
             self.evaluator = MagiEvaluator(self.model, self.sr_model, self.evaluation_config, self.config, self.device)
             
         else:
-            self.model = get_dit(self.config.arch_config, self.config.engine_config, torch_type=torch.bfloat16)
+            self.sr_model = get_dit(self.config.sr_arch_config, self.config.engine_config, torch_type=torch.float8_e4m3fn)
             self.evaluator = MagiEvaluator(self.model, self.sr_model, self.evaluation_config, self.config, self.device)
 
 
