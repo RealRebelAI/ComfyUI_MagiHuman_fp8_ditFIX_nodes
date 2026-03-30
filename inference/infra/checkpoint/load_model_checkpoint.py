@@ -90,7 +90,9 @@ def load_sharded_safetensors_parallel_with_progress(checkpoint_dir):
         param_names = [k for k, v in index["weight_map"].items() if v == shard_file]
         
         # Load the shard data
-        weights = load_file(shard_path)
+        # Force Windows to read the file into RAM instead of memory-mapping it
+        with open(shard_path, "rb") as f:
+            weights = load_from_bytes(f.read())
         
         # Extract only what we need and update the main dict
         for name in param_names:
