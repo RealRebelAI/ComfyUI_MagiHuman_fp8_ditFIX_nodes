@@ -98,25 +98,21 @@ def get_dit(model_config, engine_config,torch_type,offload=False,):
     # )
 
     # --- FP8 INJECTION FIX: PREPARE MODEL FOR SCALES ---
-    # We must use weight.__fp8_scale (with a dot) to match the incoming state_dict keys perfectly
     for name, module in model.named_modules():
         if module.__class__.__name__ in ['BaseLinear', 'NativeMoELinear']:
-            # Register the scale so load_state_dict doesn't reject it
-            module.register_buffer('weight.__fp8_scale', torch.ones(1, dtype=torch.float32))
+            # Uses LEGAL PyTorch naming
+            module.register_buffer('weight_scale', torch.ones(1, dtype=torch.float32))
 
-    # --- ORIGINAL LOADER (WITHOUT THE BLANKET .to(torch_type)) ---
-    # The .to(torch_type) was stripped from this line because it destroys FP8 weights
+    # --- ORIGINAL LOADER ---
     model = load_model_checkpoint(model, engine_config)
 
     # --- FP8 INJECTION FIX: SAFE TYPE CASTING ---
-    # Selectively cast only the non-FP8 parameters to the target torch_type
     for param in model.parameters():
         if getattr(param, "dtype", None) != torch.float8_e4m3fn:
             param.data = param.data.to(torch_type)
             
     for name, buf in model.named_buffers():
-        # Do not cast the FP8 weights or their Float32 scales
-        if getattr(buf, "dtype", None) != torch.float8_e4m3fn and '__fp8_scale' not in name:
+        if getattr(buf, "dtype", None) != torch.float8_e4m3fn and 'weight_scale' not in name:
             buf.data = buf.data.to(torch_type)
     # -----------------------------------------------------------
 
