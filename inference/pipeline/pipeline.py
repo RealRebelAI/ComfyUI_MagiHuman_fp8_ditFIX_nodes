@@ -63,7 +63,7 @@ class MagiPipeline:
             
             # Now it is safe to load the massive SR model
             self.config.engine_config.load = self.evaluation_config.sr_model_path
-            self.sr_model = get_dit(self.config.sr_arch_config, self.config.engine_config, torch_type=torch.bfloat16)
+            self.sr_model = get_dit(self.config.sr_arch_config, self.config.engine_config, torch_type=torch.float8_e4m3fn)
             self.evaluator = MagiEvaluator(self.model, self.sr_model, self.evaluation_config, self.config, self.device)
             
         else:
