@@ -56,49 +56,44 @@ def _load_shard(shard_path, param_names, num_threads=None):
 
 
 def load_sharded_safetensors_parallel_with_progress(checkpoint_dir):
-    # If it's just one file, load it normally
+    import torch
+    from safetensors.torch import load as load_from_bytes
+    
+    # 1. Handle Single File Case
     if os.path.isfile(checkpoint_dir):
-        return load_file(checkpoint_dir)
+        with open(checkpoint_dir, "rb") as f:
+            return load_from_bytes(f.read())
 
     index_path = os.path.join(checkpoint_dir, "model.safetensors.index.json")
     
-    # If no index, try to find a single model file
+    # 2. Handle missing index (Manual search)
     if not os.path.exists(index_path):
-        model_file_path = os.path.join(checkpoint_dir, "model.safetensors")
-        if os.path.exists(model_file_path):
-            return load_file(model_file_path)
-        # Fallback for your custom merged filename
-        final_file = os.path.join(checkpoint_dir, "davinci_distilled_FINAL.safetensors")
-        if os.path.exists(final_file):
-            return load_file(final_file)
-        raise FileNotFoundError(f"Could not find model files in {checkpoint_dir}")
+        for fallback in ["model.safetensors", "davinci_distilled_FINAL.safetensors"]:
+            f_path = os.path.join(checkpoint_dir, fallback)
+            if os.path.exists(f_path):
+                with open(f_path, "rb") as f:
+                    return load_from_bytes(f.read())
+        raise FileNotFoundError(f"No model found in {checkpoint_dir}")
 
+    # 3. Handle Sharded Case
     with open(index_path, "r") as f:
         index = json.load(f)
 
     state_dict = {}
-    # Get unique shard files from the weight map
     shard_files = sorted(list(set(index["weight_map"].values())))
-    
-    print(f"Loading {len(shard_files)} shards sequentially to save RAM...")
-    
-    # We load them ONE BY ONE instead of using multi-threading
-    for shard_file in tqdm(shard_files, desc="RAM-Safe Loading"):
+    print(f"Brute-force loading {len(shard_files)} shards to bypass Windows Access Violation...")
+
+    for shard_file in tqdm(shard_files, desc="RAM-Safe Load"):
         shard_path = os.path.join(checkpoint_dir, shard_file)
-        
-        # Get the list of parameters that belong to this specific shard
         param_names = [k for k, v in index["weight_map"].items() if v == shard_file]
         
-        # Load the shard data
-        # Force Windows to read the file into RAM instead of memory-mapping it
+        # USE RAW READ ONLY - NO MMAP ALLOWED
         with open(shard_path, "rb") as f:
             weights = load_from_bytes(f.read())
         
-        # Extract only what we need and update the main dict
         for name in param_names:
             state_dict[name] = weights[name]
         
-        # Clean up temporary weights immediately to free memory for the next shard
         del weights
         gc.collect()
 
