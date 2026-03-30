@@ -30,7 +30,7 @@ ComfyUI_MagiHuman
 
 Update
 ----
-* REBEL added fp8 scaling support for my model. https://huggingface.co/realrebelai/DaVinci_MagiHuman_fp8_merges/tree/main
+* REBEL added fp8 scaling support for my model, i also added a bypass of flash attn. https://huggingface.co/realrebelai/DaVinci_MagiHuman_fp8_merges/tree/main
 
 
 * add layer offload num to fit high vram 大显存 把offload开到你跑得动为止，小显存则从1开始测试，MagiCompiler库不用，但是改了麻烦，还是加了回来
