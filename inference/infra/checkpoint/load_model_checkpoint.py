@@ -104,12 +104,17 @@ def load_sharded_safetensors_parallel_with_progress(checkpoint_dir):
 
 
 def load_model_checkpoint(model, engine_config: EngineConfig):
-    print_rank_0("Loading checkpoint with safetensors format from pretrained_folder")
+    print_rank_0("Loading checkpoint sequentially...")
     state_dict = load_sharded_safetensors_parallel_with_progress(engine_config.load)
-    missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False,assign=True)
+    
+    # Use assign=True to help with memory, then immediately nuke the dict
+    missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False, assign=True)
+    
+    # Hard wipe the temporary dictionary immediately
+    state_dict.clear() 
     del state_dict
     gc.collect()
+    
     print_rank_0(f"Load Weight Missing Keys: {missing_keys}")
     print_rank_0(f"Load Weight Unexpected Keys: {unexpected_keys}")
-    print_rank_0("Load checkpoint successfully")
     return model
