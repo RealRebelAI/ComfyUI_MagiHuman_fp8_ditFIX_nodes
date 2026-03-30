@@ -183,7 +183,6 @@ class BlockGPUManager:
         return self
 
 
-
 @dataclass
 class FFAHandler:
     q_ranges: torch.Tensor
@@ -325,15 +324,6 @@ class ElementWiseFourierEmbed(nn.Module):
         device: torch.device = torch.device("cpu"),
         dtype: torch.dtype = torch.float32,
     ):
-        """
-        Args:
-            dim: Output feature dimension, total channels, must be divisible by 6
-            max_res: Max pixel-frequency resolution for pixel-domain bands
-            temperature: Temperature in inverse-frequency mode
-            in_pixels: True -> pixel-frequency bands, False -> inverse-frequency bands
-            linear_bands: Whether pixel-frequency bands are linearly spaced
-            learnable: Whether frequency bands are trainable
-        """
         super().__init__()
         self.dim = dim
         self.in_pixels = in_pixels
@@ -351,12 +341,6 @@ class ElementWiseFourierEmbed(nn.Module):
             self.register_buffer("bands", bands)
 
     def forward(self, coords: torch.Tensor) -> torch.Tensor:
-        """
-        Args:
-            coords: [L,9], column order (time, row, col, T, H, W, ref_T, ref_H, ref_W)
-        Returns:
-            emb: [L, dim] element-wise Fourier embedding
-        """
         # Use slicing instead of unbind + stack to reduce intermediates
         coords_xyz = coords[:, :3]  # [L,3] -> (t, h, w)
         sizes = coords[:, 3:6]  # [L,3] -> (T, H, W)
@@ -442,6 +426,7 @@ class MultiModalityRMSNorm(nn.Module):
         return (t * (self.weight + 1)).to(original_dtype)
 
 
+# --- FP8 INJECTION FIX: THE MATH ENGINE ---
 class _BF16ComputeLinear(torch.autograd.Function):
     @staticmethod
     def forward(
@@ -451,22 +436,40 @@ class _BF16ComputeLinear(torch.autograd.Function):
         bias: Optional[torch.Tensor],
         output_dtype: Optional[torch.dtype],
         compute_dtype: torch.dtype = torch.bfloat16,
+        weight_scale: Optional[torch.Tensor] = None, # Added param for FP8 scale
     ):
-        # Convert input to specified input data type
+        # FP8 Fast Path routing to Tensor Cores
+        if weight.dtype == torch.float8_e4m3fn and weight_scale is not None:
+            # Dynamically quantize input to FP8 per-tensor absmax
+            input_amax = torch.amax(torch.abs(input), dim=-1, keepdim=True)
+            input_scale = input_amax / 448.0 # FP8 E4M3 max value
+            input_fp8 = (input / input_scale).to(torch.float8_e4m3fn)
+            
+            # _scaled_mm handles the actual tensor core math
+            output, _ = torch._scaled_mm(
+                input_fp8,
+                weight.t(),
+                out_dtype=compute_dtype,
+                scale_a=input_scale,
+                scale_b=weight_scale
+            )
+            
+            if bias is not None:
+                output = output + bias.to(compute_dtype)
+                
+            return output.to(output_dtype)
+
+        # Fallback to standard precision if not FP8
         input_cast = input.to(compute_dtype)
-        # Convert weight to computation data type
         weight_cast = weight.to(compute_dtype)
-        # Perform linear operation
         output = torch.matmul(input_cast, weight_cast.t())
 
-        # Add bias if present
         if bias is not None:
             bias_cast = bias.to(compute_dtype)
             output = output + bias_cast
         else:
             bias_cast = None
 
-        # Convert output to specified output data type
         return output.to(output_dtype)
 
 
@@ -493,6 +496,9 @@ class BaseLinear(nn.Module):
             self.bias = Parameter(torch.empty(out_features * num_experts, **factory_kwargs))
         else:
             self.register_parameter("bias", None)
+            
+        # We pre-register the buffer so the state_dict loader doesn't crash
+        self.register_buffer('weight_scale', None)
 
     def forward(
         self,
@@ -501,7 +507,13 @@ class BaseLinear(nn.Module):
         modality_dispatcher: Optional[ModalityDispatcher] = None,
     ) -> torch.Tensor:
         output_dtype = input.dtype if output_dtype is None else output_dtype
-        return _BF16ComputeLinear.apply(input, self.weight, self.bias, output_dtype, torch.bfloat16)
+        
+        # Check if we caught the FP8 scale from the loader
+        scale = None
+        if hasattr(self, 'weight__fp8_scale'):
+            scale = getattr(self, 'weight__fp8_scale')
+            
+        return _BF16ComputeLinear.apply(input, self.weight, self.bias, output_dtype, torch.bfloat16, scale)
 
 
 class NativeMoELinear(BaseLinear):
@@ -515,6 +527,12 @@ class NativeMoELinear(BaseLinear):
 
         input_list = modality_dispatcher.dispatch(input)  # type: ignore
         weight_chunked = self.weight.chunk(self.num_experts, dim=0)
+        
+        # Grab scales if they exist and chunk them
+        scale_chunked = [None] * self.num_experts
+        if hasattr(self, 'weight__fp8_scale'):
+            scale = getattr(self, 'weight__fp8_scale')
+            scale_chunked = scale.chunk(self.num_experts, dim=0)
 
         if self.bias is not None:
             bias_chunked = self.bias.chunk(self.num_experts, dim=0)
@@ -526,6 +544,7 @@ class NativeMoELinear(BaseLinear):
                 bias_chunked[i] if self.bias is not None else None,
                 output_dtype,
                 torch.bfloat16,
+                scale_chunked[i]  # Pass the chunked scale
             )
         return modality_dispatcher.undispatch(*input_list)  # type: ignore
 
@@ -897,9 +916,6 @@ class Adapter(torch.nn.Module):
         output_x[audio_mask] = self.audio_embedder(audio_input).to(output_x.dtype)
         output_x[video_mask] = self.video_embedder(video_input).to(output_x.dtype)
 
-        # output_x[text_mask] = self.text_embedder(x[text_mask, : self.config.text_in_channels])
-        # output_x[audio_mask] = self.audio_embedder(x[audio_mask, : self.config.audio_in_channels])
-        # output_x[video_mask] = self.video_embedder(x[video_mask, : self.config.video_in_channels])
         return output_x, rope
 
 
@@ -1009,10 +1025,8 @@ class TransformerBlock(torch.nn.Module):
         gpu_manager=None,
     ) -> torch.Tensor:
         for layer_index in range(len(self.layers)):
-            #if gpu_manager is not None and layer_index < len(gpu_manager.managed_modules):
             if gpu_manager is not None:
                 layer = gpu_manager._get_layer(layer_index)
-                #gpu_manager._pass_layer(layer_index)
             else:
                 layer = self.layers[layer_index]
             
@@ -1090,7 +1104,6 @@ class DiTModel(torch.nn.Module):
         video_mask = modality_mapping == Modality.VIDEO
         audio_mask = modality_mapping == Modality.AUDIO
         text_mask = modality_mapping == Modality.TEXT
-        #print(x.dtype, coords_mapping.dtype, modality_mapping.dtype) #torch.float32 torch.float32 torch.int64
         x, rope = self.adapter(x, coords_mapping, video_mask, audio_mask, text_mask)
         x = x.to(self.config.params_dtype)
         x = ModalityDispatcher.permute(x, permute_mapping)
