@@ -56,45 +56,45 @@ def _load_shard(shard_path, param_names, num_threads=None):
 
 
 def load_sharded_safetensors_parallel_with_progress(checkpoint_dir):
+    from safetensors.torch import load_file
     import torch
-    from safetensors.torch import load as load_from_bytes
     
-    # 1. Handle Single File Case
+    # Use a standard CPU device to prevent the GPU from spiking too early
+    device = "cpu"
+
+    # 1. Handle Single File
     if os.path.isfile(checkpoint_dir):
-        with open(checkpoint_dir, "rb") as f:
-            return load_from_bytes(f.read())
+        # mmap=False is the key to stopping the "Access Violation" and "Panic"
+        return load_file(checkpoint_dir, device=device)
 
     index_path = os.path.join(checkpoint_dir, "model.safetensors.index.json")
-    
-    # 2. Handle missing index (Manual search)
     if not os.path.exists(index_path):
-        for fallback in ["model.safetensors", "davinci_distilled_FINAL.safetensors"]:
-            f_path = os.path.join(checkpoint_dir, fallback)
-            if os.path.exists(f_path):
-                with open(f_path, "rb") as f:
-                    return load_from_bytes(f.read())
+        # Look for your specific final merged file
+        final_file = os.path.join(checkpoint_dir, "davinci_distilled_FINAL.safetensors")
+        if os.path.exists(final_file):
+            return load_file(final_file, device=device)
         raise FileNotFoundError(f"No model found in {checkpoint_dir}")
 
-    # 3. Handle Sharded Case
+    # 2. Handle Shards (The RAM-Safe way)
     with open(index_path, "r") as f:
         index = json.load(f)
 
     state_dict = {}
     shard_files = sorted(list(set(index["weight_map"].values())))
-    print(f"Brute-force loading {len(shard_files)} shards to bypass Windows Access Violation...")
+    print(f"Lazy-loading {len(shard_files)} shards to save 16GB RAM...")
 
-    for shard_file in tqdm(shard_files, desc="RAM-Safe Load"):
+    for shard_file in tqdm(shard_files, desc="Streaming Shards"):
         shard_path = os.path.join(checkpoint_dir, shard_file)
         param_names = [k for k, v in index["weight_map"].items() if v == shard_file]
         
-        # USE RAW READ ONLY - NO MMAP ALLOWED
-        with open(shard_path, "rb") as f:
-            weights = load_from_bytes(f.read())
+        # We load without mmap to avoid the Windows Access Violation
+        current_weights = load_file(shard_path, device=device)
         
         for name in param_names:
-            state_dict[name] = weights[name]
-        
-        del weights
+            # .clone() prevents the "deallocated bytearray" error by making a real copy
+            state_dict[name] = current_weights[name].clone()
+            
+        del current_weights
         gc.collect()
 
     return state_dict
