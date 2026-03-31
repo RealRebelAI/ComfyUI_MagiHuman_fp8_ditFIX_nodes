@@ -198,6 +198,43 @@ def load_sharded_safetensors_parallel_with_progress(
         target_device = mm.get_torch_device()
 
     # Pre-build lookup tables for O(1) key resolution
+    # ──────────────────────────────────────────────
+# PUBLIC ENTRY POINT — called by get_dit.py as:
+#   model = load_model_checkpoint(model, engine_config)
+# ──────────────────────────────────────────────
+
+def load_model_checkpoint(
+    model: torch.nn.Module,
+    engine_config,
+) -> torch.nn.Module:
+    """
+    Bridge between get_dit.py and the no-mmap streaming loader.
+    Extracts the checkpoint path from engine_config and dispatches to
+    load_sharded_safetensors_parallel_with_progress().
+    """
+    ckpt_path = (
+        getattr(engine_config, "dit_checkpoint_path", None)
+        or getattr(engine_config, "checkpoint_path",     None)
+        or getattr(engine_config, "ckpt_path",           None)
+        or getattr(engine_config, "model_path",          None)
+    )
+
+    if ckpt_path is None:
+        raise ValueError(
+            "[FP8Loader] Cannot find checkpoint path in engine_config.\n"
+            "Expected one of: dit_checkpoint_path, checkpoint_path, "
+            "ckpt_path, model_path.\n"
+            f"Got attributes: {list(vars(engine_config).keys())}"
+        )
+
+    logger.info(f"[FP8Loader] load_model_checkpoint → '{ckpt_path}'")
+
+    load_sharded_safetensors_parallel_with_progress(
+        model=model,
+        checkpoint_path=ckpt_path,
+    )
+
+    return model  # model is now fully loaded on GPU in-place
     param_map:  Dict[str, torch.nn.Parameter] = dict(model.named_parameters())
     buffer_map: Dict[str, torch.Tensor]       = dict(model.named_buffers())
     module_map: Dict[str, torch.nn.Module]    = dict(model.named_modules())
