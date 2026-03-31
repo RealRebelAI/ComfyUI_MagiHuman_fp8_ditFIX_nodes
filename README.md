@@ -1,4 +1,4 @@
-![cover](<img width="1843" height="705" alt="Screenshot (79)" src="https://github.com/user-attachments/assets/428700f2-da43-4a9c-a75b-0efa47d2af6a" />
+!(<img width="1843" height="705" alt="Screenshot (79)" src="https://github.com/user-attachments/assets/428700f2-da43-4a9c-a75b-0efa47d2af6a" />
 )
 
 
