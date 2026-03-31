@@ -194,8 +194,8 @@ def load_sharded_safetensors_parallel_with_progress(
     removed: for a monolithic file, parallelism only creates contention on
     the same I/O channel and amplifies peak RAM usage by worker_count×.
     """
-    if target_device is None:
-        target_device = mm.get_torch_device()
+     import comfy.model_management as mm
+    target_device = mm.get_torch_device()
 
     # Pre-build lookup tables for O(1) key resolution
     # ──────────────────────────────────────────────
