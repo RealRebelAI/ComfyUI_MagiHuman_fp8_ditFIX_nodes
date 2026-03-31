@@ -5,9 +5,8 @@
 
 <div align="center">
 
-# daVinci-MagiHuman
+# REBELS fp8 daVinci-MagiHuman NODES
 
-### Speed by Simplicity: A Single-Stream Architecture for Fast Audio-Video Generative Foundation Model
 
 <p align="center">
   <a href="https://plms.ai">SII-GAIR</a> &nbsp;&amp;&nbsp; <a href="https://sand.ai">Sand.ai</a>
@@ -57,29 +56,22 @@ pip install .
 
 3.checkpoints 
 ----
-* dit and TE  [links](https://huggingface.co/smthem/daVinci-MagiHuman-custom-comfyUI) or 国内用户 [夸克](https://pan.quark.cn/s/26c7d9d39c87)
+* dit and TE  [links](https://huggingface.co/realrebelai/DaVinci_MagiHuman_fp8_merges/tree/main)
 
 ```
 ├── ComfyUI/models/
 |     ├── diffusion_models/
-|        ├──distill-merger_bf16.safetensors #28G
-|        ├──540p_sr_merge_bf16.safetensors #28g For SR ,放大用开源不下
+|        ├──fp8.safetensors
+|        ├──1080p_sr_merge_fp8.safetensors
 |     ├── vae/
-|        ├──sd_audio.safetensors  #4.7GM
-|        ├──Wan2.2_VAE.pth # 2.7G
+|        ├──sd_audio.safetensors
+|        ├──Wan2.2_VAE.pth
 |     ├── gguf
-|        ├──t5gemma-9b-9b-ul2-Q6_K.gguf # 11G
+|        ├──t5gemma-9b-9b-ul2-Q6_K.gguf
 
 ```
 
-4.Example
-----
-![](https://github.com/smthemex/ComfyUI_MagiHuman/blob/main/example_workflows/examplei2v.png)
 
-![](https://github.com/smthemex/ComfyUI_MagiHuman/blob/main/example_workflows/examplemagi.png)
-
-
-## 🙏 Acknowledgements
 
 We thank the open-source community, and in particular [Wan2.2](https://github.com/Wan-Video/Wan2.2) and [Turbo-VAED](https://github.com/hustvl/Turbo-VAED), for their valuable contributions.
 
