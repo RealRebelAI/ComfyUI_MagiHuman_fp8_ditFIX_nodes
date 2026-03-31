@@ -16,7 +16,6 @@ THIS MODEL WILL NOT RUN WITHOUT MY CUSTOM NODE SET. ITS CURATED FOR THIS MODEL S
 
 t5gemma text encoder gguf goes in "gguf" folder NOT text encoder folder
 
-requires these custom nodes (i forked the node set to include fp8 models): https://github.com/RealRebelAI/ComfyUI_MagiHuman_fp8_ditFIX_nodes
 
 files are in the repo
 
