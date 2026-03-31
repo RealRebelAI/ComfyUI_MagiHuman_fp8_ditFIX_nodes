@@ -172,7 +172,7 @@ def load_sharded_safetensors_parallel_with_progress(
                     f"model={param_map[key].shape} ckpt={gpu_tensor.shape}"
                 )
             with torch.no_grad():
-                param_map[key].data = gpu_tensor
+                param_map[key].data = gpu_tensor.to(param_map[key].dtype)
 
         elif key in buffer_map:
             parts = key.rsplit(".", 1)
@@ -228,7 +228,8 @@ def load_model_checkpoint(
     engine_config,
 ) -> torch.nn.Module:
     ckpt_path = (
-        getattr(engine_config, "dit_checkpoint_path", None)
+        getattr(engine_config, "load",               None)
+        or getattr(engine_config, "dit_checkpoint_path", None)
         or getattr(engine_config, "checkpoint_path",  None)
         or getattr(engine_config, "ckpt_path",        None)
         or getattr(engine_config, "model_path",       None)
