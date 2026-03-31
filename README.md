@@ -25,6 +25,7 @@
 ComfyUI_MagiHuman
 ----
 [DaVinci-MagiHuman](https://github.com/GAIR-NLP/daVinci-MagiHuman):Speed by Simplicity: A Single-Stream Architecture for Fast Audio-Video Generative Foundation Model
+[based on smthemex's node set: https://github.com/smthemex/ComfyUI_MagiHuman]
 
 
 Update
