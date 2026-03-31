@@ -25,7 +25,7 @@ from .dit_module import DiTModel
 def get_dit(model_config, engine_config,torch_type,offload=False,):
     """Build and load DiT model."""
     ctx = init_empty_weights if is_accelerate_available() else nullcontext
-    with nullcontext():
+    with ctx():
     model = DiTModel(model_config=model_config)
 
     print_rank_0("Build dit model successfully")
