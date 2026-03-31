@@ -48,12 +48,12 @@ sr fp8 model - diffusion models folder
 </div>
 
 
-ComfyUI_MagiHuman
+Rebels ComfyUI_MagiHuman
 ----
 [DaVinci-MagiHuman](https://github.com/GAIR-NLP/daVinci-MagiHuman):Speed by Simplicity: A Single-Stream Architecture for Fast Audio-Video Generative Foundation Model
 
 
-[based on smthemex's node set: https://github.com/smthemex/ComfyUI_MagiHuman]
+[fork is based on smthemex's node set: https://github.com/smthemex/ComfyUI_MagiHuman]
 
 
 Update
