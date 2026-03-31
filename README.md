@@ -1,4 +1,4 @@
-![cover](<img width="1843" height="705" alt="Screenshot (79)" src="https://github.com/user-attachments/assets/3c893e8b-40fc-46b6-a5cc-91dfe5e32473" />)
+![cover](Screenshot (79).png)
 
 
 
