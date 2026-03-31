@@ -8,6 +8,30 @@
 
 # REBELS fp8 daVinci-MagiHuman NODES
 
+EXPERIMENTAL! please test for me, my gpu is too small to hold the model 😅
+
+have not tested, just merged the files to match another contributors workflow. this will lessen the requirements for lower vram users. its still a 16gb fp8 model and the SR model to upscale it heavy as well. working on offloading implementation without sage or triton. it will be in the workflow once i test it. i will update the repo with a SEPERATE offloading workflow check back soon.
+
+THIS MODEL WILL NOT RUN WITHOUT MY CUSTOM NODE SET. ITS CURATED FOR THIS MODEL SPECIFICALLY!
+
+t5gemma text encoder gguf goes in "gguf" folder NOT text encoder folder
+
+requires these custom nodes (i forked the node set to include fp8 models): https://github.com/RealRebelAI/ComfyUI_MagiHuman_fp8_ditFIX_nodes
+
+files are in the repo
+
+fp8 model - Diffusion models folder
+
+text encoder gguf - gguf folder, NOT text encoder folder
+
+wan vae - vae folder
+
+sd audio vae - vae folder
+
+turbo vae - vae folder
+
+sr fp8 model - diffusion models folder
+
 
 <p align="center">
   <a href="https://plms.ai">SII-GAIR</a> &nbsp;&amp;&nbsp; <a href="https://sand.ai">Sand.ai</a>
