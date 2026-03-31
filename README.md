@@ -17,7 +17,9 @@ THIS MODEL WILL NOT RUN WITHOUT MY CUSTOM NODE SET. ITS CURATED FOR THIS MODEL S
 t5gemma text encoder gguf goes in "gguf" folder NOT text encoder folder
 
 
-files are in the repo
+files:
+
+https://huggingface.co/realrebelai/DaVinci_MagiHuman_fp8_merges/tree/main
 
 fp8 model - Diffusion models folder
 
