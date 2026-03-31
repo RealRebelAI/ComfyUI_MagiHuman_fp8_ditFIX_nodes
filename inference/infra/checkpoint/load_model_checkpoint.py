@@ -56,34 +56,42 @@ def _load_shard(shard_path, param_names, num_threads=None):
 
 
 def load_sharded_safetensors_parallel_with_progress(checkpoint_dir):
-    from safetensors.torch import load_file
     import torch
+    from safetensors.torch import load as load_from_bytes
     import gc
 
     # 1. Handle Single File Case
     if os.path.isfile(checkpoint_dir):
-        # mmap=False stops the "Access Violation" on Windows 16GB systems
-        return load_file(checkpoint_dir, device="cpu", mmap=False)
+        with open(checkpoint_dir, "rb") as f:
+            # f.read() bypasses the mmap system entirely
+            return load_from_bytes(f.read())
 
     index_path = os.path.join(checkpoint_dir, "model.safetensors.index.json")
+    if not os.path.exists(index_path):
+        raise FileNotFoundError(f"Missing index in {checkpoint_dir}")
+
     with open(index_path, "r") as f:
         index = json.load(f)
 
     state_dict = {}
     shard_files = sorted(list(set(index["weight_map"].values())))
-    print(f"REBEL AI MODE: Streaming {len(shard_files)} shards without mmap...")
+    print(f"REBEL AI STABILITY MODE: Loading {len(shard_files)} shards...")
 
     for shard_file in tqdm(shard_files, desc="RAM-Safe Load"):
         shard_path = os.path.join(checkpoint_dir, shard_file)
         param_names = [k for k, v in index["weight_map"].items() if v == shard_file]
         
-        # Loading with mmap=False prevents the "deallocated bytearray" error
-        current_shard = load_file(shard_path, device="cpu", mmap=False)
+        # We use standard Python 'read' to avoid the TypeError and the Access Violation
+        with open(shard_path, "rb") as f:
+            data = f.read()
+            current_shard = load_from_bytes(data)
         
         for name in param_names:
-            # .clone() makes a permanent copy so we can safely delete the shard
+            # We use .clone() to ensure the memory is independent
             state_dict[name] = current_shard[name].clone()
         
+        # Clean up the byte data and the temporary shard
+        del data
         del current_shard
         gc.collect()
 
