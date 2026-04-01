@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
 # Copyright 2024-2026 The Alibaba Wan Team Authors. All rights reserved.
 import logging
+
 
 import torch
 import torch.nn as nn
@@ -21,42 +23,31 @@ import torch.nn.functional as F
 from einops import rearrange
 
 
+
 __all__ = ["Wan2_2_VAE"]
 
+
 CACHE_T = 2
+
 
 
 class ScatterFwdAllGatherBackwardOverlap(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, group, overlap_size):
-        """
-        Forward pass: split input tensor along W; each rank processes its local
-        chunk including overlap regions.
-
-        Args:
-            x: Input tensor, shape [B, C, T, H, W]
-            group: Distributed communication group
-            overlap_size: Width of overlap region
-        """
         W = x.shape[4]
         world_size = torch.distributed.get_world_size(group)
         rank = torch.distributed.get_rank(group)
 
-        # Compute base chunk size
         base_chunk_size = (W + world_size - 1) // world_size
 
-        # Compute chunk range for current rank
         chunk_start = rank * base_chunk_size
         chunk_end = min((rank + 1) * base_chunk_size, W)
 
-        # Extend range with overlap
         overlap_start = max(0, chunk_start - overlap_size)
         overlap_end = min(W, chunk_end + overlap_size)
 
-        # Slice local chunk
         x_chunk = x[:, :, :, :, overlap_start:overlap_end].contiguous()
 
-        # Save metadata needed by backward
         ctx.save_for_backward(torch.tensor([overlap_start, overlap_end, W], dtype=torch.long, device=x.device))
         ctx.group = group
         ctx.overlap_size = overlap_size
@@ -65,12 +56,9 @@ class ScatterFwdAllGatherBackwardOverlap(torch.autograd.Function):
         ctx.base_chunk_size = base_chunk_size
         return x_chunk
 
+
     @staticmethod
     def backward(ctx, grad_output):
-        """
-        Backward pass: all-gather gradients from all ranks and trim overlap.
-        """
-        # Restore saved forward metadata
         overlap_start, overlap_end, W = ctx.saved_tensors[0]
         overlap_start = overlap_start.item()
         overlap_end = overlap_end.item()
@@ -82,7 +70,6 @@ class ScatterFwdAllGatherBackwardOverlap(torch.autograd.Function):
         ctx.rank
         base_chunk_size = ctx.base_chunk_size
 
-        # Collect gradients from all ranks via all_gather
         grad_output = grad_output.contiguous()
         B, C, T, H = grad_output.shape[:4]
         grad_shapes = []
@@ -93,7 +80,6 @@ class ScatterFwdAllGatherBackwardOverlap(torch.autograd.Function):
             r_overlap_start = max(0, r_chunk_start - overlap_size)
             r_overlap_end = min(W, r_chunk_end + overlap_size)
 
-            # Compute gradient shape for each rank
             chunk_width = r_overlap_end - r_overlap_start
             grad_shapes.append((B, C, T, H, chunk_width))
         grad_chunks = [
@@ -101,10 +87,8 @@ class ScatterFwdAllGatherBackwardOverlap(torch.autograd.Function):
         ]
         torch.distributed.all_gather(grad_chunks, grad_output, group=group)
 
-        # Stitch gathered chunks into full gradient tensor
         full_grad = torch.zeros(B, C, T, H, W, device=grad_output.device, dtype=grad_output.dtype)
 
-        # Place each rank's gradient chunk at the correct position
         for r in range(world_size):
             r_chunk_start = r * base_chunk_size
             r_chunk_end = min((r + 1) * base_chunk_size, W)
@@ -112,24 +96,19 @@ class ScatterFwdAllGatherBackwardOverlap(torch.autograd.Function):
             r_overlap_start = max(0, r_chunk_start - overlap_size)
             r_overlap_end = min(W, r_chunk_end + overlap_size)
 
-            # Position in full gradient
             grad_start_in_full = r_overlap_start
             grad_end_in_full = r_overlap_end
 
-            # Position inside gathered chunk
             grad_start_in_chunk = 0
             grad_end_in_chunk = r_overlap_end - r_overlap_start
 
-            # Handle left boundary for first rank
             if r == 0:
                 grad_start_in_chunk = 0
                 grad_end_in_chunk = min(r_chunk_end + overlap_size, W) - r_overlap_start
-            # Handle right boundary for last rank
             elif r == world_size - 1:
                 grad_start_in_chunk = max(0, r_chunk_start - overlap_size) - r_overlap_start
                 grad_end_in_chunk = r_overlap_end - r_overlap_start
 
-            # Accumulate into full gradient
             full_grad[:, :, :, :, grad_start_in_full:grad_end_in_full] += grad_chunks[r][
                 :, :, :, :, grad_start_in_chunk:grad_end_in_chunk
             ]
@@ -137,25 +116,18 @@ class ScatterFwdAllGatherBackwardOverlap(torch.autograd.Function):
         return full_grad, None, None
 
 
+
 def scatter_fwd_all_gather_backward_with_overlap(x, group, overlap_size=0):
     return ScatterFwdAllGatherBackwardOverlap.apply(x, group, overlap_size)
+
 
 
 class AllGatherFwdScatterBackwardOverlap(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, group, overlap_size):
-        """
-        Forward pass: each rank clips local input, then all-gathers clipped chunks.
-
-        Args:
-            x: Input tensor, shape [B, C, T, H, W], already local overlapped chunk per rank
-            group: Distributed communication group
-            overlap_size: Width of overlap region
-        """
         world_size = torch.distributed.get_world_size(group)
         rank = torch.distributed.get_rank(group)
 
-        # Clip local input first (remove overlap area)
         if rank == 0:
             valid_start = 0
             valid_end = x.shape[-1] - overlap_size
@@ -169,19 +141,16 @@ class AllGatherFwdScatterBackwardOverlap(torch.autograd.Function):
         x_clipped = x[..., valid_start:valid_end].contiguous()
         clipped_width = x_clipped.shape[-1]
 
-        # First all_gather: collect clipped widths across ranks
         width_tensor = torch.tensor([clipped_width], dtype=torch.long, device=x.device)
         all_widths = [torch.zeros_like(width_tensor) for _ in range(world_size)]
         torch.distributed.all_gather(all_widths, width_tensor, group=group)
         clipped_widths = [w.item() for w in all_widths]
 
-        # Second all_gather: collect clipped data across ranks
         B, C, T, H = x_clipped.shape[:4]
         x_clipped_chunks = [torch.zeros(B, C, T, H, w, device=x.device, dtype=x.dtype) for w in clipped_widths]
         torch.distributed.all_gather(x_clipped_chunks, x_clipped, group=group)
         full_x = torch.cat(x_clipped_chunks, dim=-1)
 
-        # Save metadata needed by backward
         ctx.save_for_backward(torch.tensor([valid_start, valid_end], dtype=torch.long, device=x.device))
         ctx.clipped_widths = clipped_widths
         ctx.group = group
@@ -191,12 +160,9 @@ class AllGatherFwdScatterBackwardOverlap(torch.autograd.Function):
 
         return full_x
 
+
     @staticmethod
     def backward(ctx, grad_output):
-        """
-        Backward pass: each rank restores gradients for its own partition only.
-        """
-        # Restore saved forward metadata
         valid_start, valid_end = ctx.saved_tensors[0]
         valid_start = valid_start.item()
         valid_end = valid_end.item()
@@ -207,33 +173,30 @@ class AllGatherFwdScatterBackwardOverlap(torch.autograd.Function):
         world_size = ctx.world_size
         rank = ctx.rank
 
-        # Compute current rank offset in full gradient
         start_pos = sum(clipped_widths[:rank])
         end_pos = start_pos + clipped_widths[rank]
 
-        # Extract only current rank gradient slice
         grad_clipped = grad_output[:, :, :, :, start_pos:end_pos]
 
-        # Pad zeros to recover overlap area for current rank
         if rank == 0:
-            # First rank: pad right
             grad_full = F.pad(grad_clipped, (0, overlap_size))
         elif rank == world_size - 1:
-            # Last rank: pad left
             grad_full = F.pad(grad_clipped, (overlap_size, 0))
         else:
-            # Middle rank: pad both sides
             grad_full = F.pad(grad_clipped, (overlap_size, overlap_size))
 
         return grad_full, None, None
+
 
 
 def all_gather_fwd_scatter_backward_with_overlap(x, group, overlap_size=0):
     return AllGatherFwdScatterBackwardOverlap.apply(x, group, overlap_size)
 
 
+
 def one_plus_world_size(group):
     return group is not None and torch.distributed.get_world_size(group) > 1
+
 
 
 class CausalConv3d(nn.Conv3d):
@@ -246,8 +209,7 @@ class CausalConv3d(nn.Conv3d):
         self._padding = (self.padding[2], self.padding[2], self.padding[1], self.padding[1], 2 * self.padding[0], 0)
         self.padding = (0, 0, 0)
 
-    @torch.compile
-    def forward(self, x, cache_x=None, group = None):
+    def forward(self, x, cache_x=None, group=None):
         padding = list(self._padding)
         if cache_x is not None and self._padding[4] > 0:
             cache_x = cache_x.to(x.device)
@@ -263,6 +225,7 @@ class CausalConv3d(nn.Conv3d):
         return x
 
 
+
 class RMS_norm(nn.Module):
     def __init__(self, dim, channel_first=True, images=True, bias=False):
         super().__init__()
@@ -274,18 +237,18 @@ class RMS_norm(nn.Module):
         self.gamma = nn.Parameter(torch.ones(shape))
         self.bias = nn.Parameter(torch.zeros(shape)) if bias else 0.0
 
-    @torch.compile
     def forward(self, x):
         return F.normalize(x, dim=(1 if self.channel_first else -1)) * self.scale * self.gamma + self.bias
 
 
+
 class Upsample(nn.Upsample):
-    @torch.compile
     def forward(self, x):
         """
         Fix bfloat16 support for nearest neighbor interpolation.
         """
         return super().forward(x.float()).type_as(x)
+
 
 
 class Resample(nn.Module):
@@ -295,7 +258,6 @@ class Resample(nn.Module):
         self.dim = dim
         self.mode = mode
 
-        # layers
         if mode == "upsample2d":
             self.resample = nn.Sequential(
                 Upsample(scale_factor=(2.0, 2.0), mode="nearest-exact"), nn.Conv2d(dim, dim, 3, padding=1)
@@ -304,7 +266,6 @@ class Resample(nn.Module):
             self.resample = nn.Sequential(
                 Upsample(scale_factor=(2.0, 2.0), mode="nearest-exact"),
                 nn.Conv2d(dim, dim, 3, padding=1),
-                # nn.Conv2d(dim, dim//2, 3, padding=1)
             )
             self.time_conv = CausalConv3d(dim, dim * 2, (3, 1, 1), padding=(1, 0, 0))
         elif mode == "downsample2d":
@@ -315,7 +276,6 @@ class Resample(nn.Module):
         else:
             self.resample = nn.Identity()
 
-    @torch.compile
     def forward(self, x, feat_cache=None, feat_idx=[0], group: torch.distributed.ProcessGroup = None):
         if one_plus_world_size(group):
             if self.mode in ["upsample3d", "upsample2d"]:
@@ -336,7 +296,6 @@ class Resample(nn.Module):
                 else:
                     cache_x = x[:, :, -CACHE_T:, :, :].clone()
                     if cache_x.shape[2] < 2 and feat_cache[idx] is not None and feat_cache[idx] != "Rep":
-                        # cache last frame of last two chunk
                         cache_x = torch.cat([feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device), cache_x], dim=2)
                     if cache_x.shape[2] < 2 and feat_cache[idx] is not None and feat_cache[idx] == "Rep":
                         cache_x = torch.cat([torch.zeros_like(cache_x).to(cache_x.device), cache_x], dim=2)
@@ -383,7 +342,7 @@ class Resample(nn.Module):
         one_matrix = torch.eye(c1, c2)
         init_matrix = one_matrix
         nn.init.zeros_(conv_weight)
-        conv_weight.data[:, :, 1, 0, 0] = init_matrix  # * 0.5
+        conv_weight.data[:, :, 1, 0, 0] = init_matrix
         conv.weight = nn.Parameter(conv_weight)
         nn.init.zeros_(conv.bias.data)
 
@@ -398,13 +357,13 @@ class Resample(nn.Module):
         nn.init.zeros_(conv.bias.data)
 
 
+
 class ResidualBlock(nn.Module):
     def __init__(self, in_dim, out_dim, dropout=0.0):
         super().__init__()
         self.in_dim = in_dim
         self.out_dim = out_dim
 
-        # layers
         self.residual = nn.Sequential(
             RMS_norm(in_dim, images=False),
             nn.SiLU(),
@@ -416,8 +375,6 @@ class ResidualBlock(nn.Module):
         )
         self.shortcut = CausalConv3d(in_dim, out_dim, 1) if in_dim != out_dim else nn.Identity()
 
-
-    @torch.compile
     def forward(self, x, feat_cache=None, feat_idx=[0], group: torch.distributed.ProcessGroup = None):
         if one_plus_world_size(group):
             overlap_size = 2
@@ -428,7 +385,6 @@ class ResidualBlock(nn.Module):
                 idx = feat_idx[0]
                 cache_x = x[:, :, -CACHE_T:, :, :].clone()
                 if cache_x.shape[2] < 2 and feat_cache[idx] is not None:
-                    # cache last frame of last two chunk
                     cache_x = torch.cat([feat_cache[idx][:, :, -1, :, :].unsqueeze(2).to(cache_x.device), cache_x], dim=2)
                 x = layer(x, feat_cache[idx])
                 feat_cache[idx] = cache_x
@@ -441,6 +397,7 @@ class ResidualBlock(nn.Module):
         return x
 
 
+
 class AttentionBlock(nn.Module):
     """
     Causal self-attention with a single head.
@@ -450,32 +407,27 @@ class AttentionBlock(nn.Module):
         super().__init__()
         self.dim = dim
 
-        # layers
         self.norm = RMS_norm(dim)
         self.to_qkv = nn.Conv2d(dim, dim * 3, 1)
         self.proj = nn.Conv2d(dim, dim, 1)
 
-        # zero out the last layer params
         nn.init.zeros_(self.proj.weight)
 
-    @torch.compile
     def forward(self, x):
         identity = x
         b, c, t, h, w = x.size()
         x = rearrange(x, "b c t h w -> (b t) c h w")
         x = self.norm(x)
-        # compute query, key, value
         q, k, v = self.to_qkv(x).reshape(b * t, 1, c * 3, -1).permute(0, 1, 3, 2).contiguous().chunk(3, dim=-1)
 
-        # apply attention
         x = F.scaled_dot_product_attention(q, k, v)
         x = x.squeeze(1).permute(0, 2, 1).reshape(b * t, c, h, w)
 
-        # output
         x = self.proj(x)
         x = rearrange(x, "(b t) c h w-> b c t h w", t=t)
         x = x + identity
         return x
+
 
 
 def patchify(x, patch_size):
@@ -487,19 +439,19 @@ def patchify(x, patch_size):
         x = rearrange(x, "b c f (h q) (w r) -> b (c r q) f h w", q=patch_size, r=patch_size)
     else:
         raise ValueError(f"Invalid input shape: {x.shape}")
-
     return x
+
 
 
 def unpatchify(x, patch_size):
     if patch_size == 1:
         return x
-
     if x.dim() == 4:
         x = rearrange(x, "b (c r q) h w -> b c (h q) (w r)", q=patch_size, r=patch_size)
     elif x.dim() == 5:
         x = rearrange(x, "b (c r q) f h w -> b c f (h q) (w r)", q=patch_size, r=patch_size)
     return x
+
 
 
 class AvgDown3D(nn.Module):
@@ -514,7 +466,6 @@ class AvgDown3D(nn.Module):
         assert in_channels * self.factor % out_channels == 0
         self.group_size = in_channels * self.factor // out_channels
 
-    @torch.compile
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         pad_t = (self.factor_t - x.shape[2] % self.factor_t) % self.factor_t
         pad = (0, 0, 0, 0, pad_t, 0)
@@ -530,12 +481,12 @@ class AvgDown3D(nn.Module):
         return x
 
 
+
 class DupUp3D(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, factor_t, factor_s=1):
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
-
         self.factor_t = factor_t
         self.factor_s = factor_s
         self.factor = self.factor_t * self.factor_s * self.factor_s
@@ -543,7 +494,6 @@ class DupUp3D(nn.Module):
         assert out_channels * self.factor % in_channels == 0
         self.repeats = out_channels * self.factor // in_channels
 
-    @torch.compile
     def forward(self, x: torch.Tensor, first_chunk=False) -> torch.Tensor:
         x = x.repeat_interleave(self.repeats, dim=1)
         x = x.view(x.size(0), self.out_channels, self.factor_t, self.factor_s, self.factor_s, x.size(2), x.size(3), x.size(4))
@@ -556,60 +506,53 @@ class DupUp3D(nn.Module):
         return x
 
 
+
 class Down_ResidualBlock(nn.Module):
     def __init__(self, in_dim, out_dim, dropout, mult, temperal_downsample=False, down_flag=False):
         super().__init__()
 
-        # Shortcut path with downsample
         self.avg_shortcut = AvgDown3D(
             in_dim, out_dim, factor_t=2 if temperal_downsample else 1, factor_s=2 if down_flag else 1
         )
 
-        # Main path with residual blocks and downsample
         downsamples = []
         for _ in range(mult):
             downsamples.append(ResidualBlock(in_dim, out_dim, dropout))
             in_dim = out_dim
 
-        # Add the final downsample block
         if down_flag:
             mode = "downsample3d" if temperal_downsample else "downsample2d"
             downsamples.append(Resample(out_dim, mode=mode))
 
         self.downsamples = nn.Sequential(*downsamples)
 
-    @torch.compile
     def forward(self, x, feat_cache=None, feat_idx=[0]):
         x_copy = x.clone()
         for module in self.downsamples:
             x = module(x, feat_cache, feat_idx)
-
         return x + self.avg_shortcut(x_copy)
+
 
 
 class Up_ResidualBlock(nn.Module):
     def __init__(self, in_dim, out_dim, dropout, mult, temperal_upsample=False, up_flag=False):
         super().__init__()
-        # Shortcut path with upsample
         if up_flag:
             self.avg_shortcut = DupUp3D(in_dim, out_dim, factor_t=2 if temperal_upsample else 1, factor_s=2 if up_flag else 1)
         else:
             self.avg_shortcut = None
 
-        # Main path with residual blocks and upsample
         upsamples = []
         for _ in range(mult):
             upsamples.append(ResidualBlock(in_dim, out_dim, dropout))
             in_dim = out_dim
 
-        # Add the final upsample block
         if up_flag:
             mode = "upsample3d" if temperal_upsample else "upsample2d"
             upsamples.append(Resample(out_dim, mode=mode))
 
         self.upsamples = nn.Sequential(*upsamples)
 
-    @torch.compile
     def forward(self, x, feat_cache=None, feat_idx=[0], first_chunk=False, group: torch.distributed.ProcessGroup = None):
         x_main = x.clone()
         for module in self.upsamples:
@@ -619,6 +562,7 @@ class Up_ResidualBlock(nn.Module):
             return x_main + x_shortcut
         else:
             return x_main
+
 
 
 class Encoder3d(nn.Module):
@@ -640,14 +584,11 @@ class Encoder3d(nn.Module):
         self.attn_scales = attn_scales
         self.temperal_downsample = temperal_downsample
 
-        # dimensions
         dims = [dim * u for u in [1] + dim_mult]
         scale = 1.0
 
-        # init block
         self.conv1 = CausalConv3d(12, dims[0], 3, padding=1)
 
-        # downsample blocks
         downsamples = []
         for i, (in_dim, out_dim) in enumerate(zip(dims[:-1], dims[1:])):
             t_down_flag = temperal_downsample[i] if i < len(temperal_downsample) else False
@@ -664,15 +605,12 @@ class Encoder3d(nn.Module):
             scale /= 2.0
         self.downsamples = nn.Sequential(*downsamples)
 
-        # middle blocks
         self.middle = nn.Sequential(
             ResidualBlock(out_dim, out_dim, dropout), AttentionBlock(out_dim), ResidualBlock(out_dim, out_dim, dropout)
         )
 
-        # # output blocks
         self.head = nn.Sequential(RMS_norm(out_dim, images=False), nn.SiLU(), CausalConv3d(out_dim, z_dim, 3, padding=1))
 
-    @torch.compile
     def forward(self, x, feat_cache=None, feat_idx=[0]):
         if feat_cache is not None:
             idx = feat_idx[0]
@@ -685,21 +623,18 @@ class Encoder3d(nn.Module):
         else:
             x = self.conv1(x)
 
-        # downsamples
         for layer in self.downsamples:
             if feat_cache is not None:
                 x = layer(x, feat_cache, feat_idx)
             else:
                 x = layer(x)
 
-        # middle
         for layer in self.middle:
             if isinstance(layer, ResidualBlock) and feat_cache is not None:
                 x = layer(x, feat_cache, feat_idx)
             else:
                 x = layer(x)
 
-        # head
         for layer in self.head:
             if isinstance(layer, CausalConv3d) and feat_cache is not None:
                 idx = feat_idx[0]
@@ -713,6 +648,7 @@ class Encoder3d(nn.Module):
                 x = layer(x)
 
         return x
+
 
 
 class Decoder3d(nn.Module):
@@ -734,18 +670,14 @@ class Decoder3d(nn.Module):
         self.attn_scales = attn_scales
         self.temperal_upsample = temperal_upsample
 
-        # dimensions
         dims = [dim * u for u in [dim_mult[-1]] + dim_mult[::-1]]
-        # scale = 1.0 / 2 ** (len(dim_mult) - 2)
-        # init block
+
         self.conv1 = CausalConv3d(z_dim, dims[0], 3, padding=1)
 
-        # middle blocks
         self.middle = nn.Sequential(
             ResidualBlock(dims[0], dims[0], dropout), AttentionBlock(dims[0]), ResidualBlock(dims[0], dims[0], dropout)
         )
 
-        # upsample blocks
         upsamples = []
         for i, (in_dim, out_dim) in enumerate(zip(dims[:-1], dims[1:])):
             t_up_flag = temperal_upsample[i] if i < len(temperal_upsample) else False
@@ -761,10 +693,9 @@ class Decoder3d(nn.Module):
             )
         self.upsamples = nn.Sequential(*upsamples)
 
-        # output blocks
         self.head = nn.Sequential(RMS_norm(out_dim, images=False), nn.SiLU(), CausalConv3d(out_dim, 12, 3, padding=1))
 
-    def forward(self, x, feat_cache=None, feat_idx=[0], first_chunk=False, group= None):
+    def forward(self, x, feat_cache=None, feat_idx=[0], first_chunk=False, group=None):
         if feat_cache is not None:
             idx = feat_idx[0]
             cache_x = x[:, :, -CACHE_T:, :, :].clone()
@@ -782,14 +713,12 @@ class Decoder3d(nn.Module):
             else:
                 x = layer(x)
 
-        # upsamples
         for layer in self.upsamples:
             if feat_cache is not None:
                 x = layer(x, feat_cache, feat_idx, first_chunk, group=group)
             else:
                 x = layer(x, group=group)
 
-        # head
         if one_plus_world_size(group):
             overlap_size = self.head[2].kernel_size[-1] // 2 * self.head[2].stride[-1]
             x = scatter_fwd_all_gather_backward_with_overlap(x, group, overlap_size=overlap_size)
@@ -809,12 +738,14 @@ class Decoder3d(nn.Module):
         return x
 
 
+
 def count_conv3d(model):
     count = 0
     for m in model.modules():
         if isinstance(m, CausalConv3d):
             count += 1
     return count
+
 
 
 class WanVAE_(nn.Module):
@@ -838,7 +769,6 @@ class WanVAE_(nn.Module):
         self.temperal_downsample = temperal_downsample
         self.temperal_upsample = temperal_downsample[::-1]
 
-        # modules
         self.encoder = Encoder3d(dim, z_dim * 2, dim_mult, num_res_blocks, attn_scales, self.temperal_downsample, dropout)
         self.conv1 = CausalConv3d(z_dim * 2, z_dim * 2, 1)
         self.conv2 = CausalConv3d(z_dim, z_dim, 1)
@@ -871,7 +801,7 @@ class WanVAE_(nn.Module):
         self.clear_cache()
         return mu
 
-    def decode(self, z, scale, group= None):
+    def decode(self, z, scale, group=None):
         self.clear_cache()
         if isinstance(scale[0], torch.Tensor):
             z = z / scale[1].view(1, self.z_dim, 1, 1, 1) + scale[0].view(1, self.z_dim, 1, 1, 1)
@@ -908,14 +838,13 @@ class WanVAE_(nn.Module):
         self._conv_num = count_conv3d(self.decoder)
         self._conv_idx = [0]
         self._feat_map = [None] * self._conv_num
-        # cache encode
         self._enc_conv_num = count_conv3d(self.encoder)
         self._enc_conv_idx = [0]
         self._enc_feat_map = [None] * self._enc_conv_num
 
 
+
 def _video_vae(pretrained_path=None, z_dim=16, dim=160, device="cpu", **kwargs):
-    # params
     cfg = dict(
         dim=dim,
         z_dim=z_dim,
@@ -927,15 +856,14 @@ def _video_vae(pretrained_path=None, z_dim=16, dim=160, device="cpu", **kwargs):
     )
     cfg.update(**kwargs)
 
-    # init model
     with torch.device("meta"):
         model = WanVAE_(**cfg)
 
-    # load checkpoint
     logging.info(f"loading {pretrained_path}")
-    model.load_state_dict(torch.load(pretrained_path, map_location=device), assign=True)
+    model.load_state_dict(torch.load(pretrained_path, map_location=device, weights_only=False), assign=True)
 
     return model
+
 
 
 class Wan2_2_VAE:
@@ -954,115 +882,30 @@ class Wan2_2_VAE:
 
         self.mean = torch.tensor(
             [
-                -0.2289,
-                -0.0052,
-                -0.1323,
-                -0.2339,
-                -0.2799,
-                0.0174,
-                0.1838,
-                0.1557,
-                -0.1382,
-                0.0542,
-                0.2813,
-                0.0891,
-                0.1570,
-                -0.0098,
-                0.0375,
-                -0.1825,
-                -0.2246,
-                -0.1207,
-                -0.0698,
-                0.5109,
-                0.2665,
-                -0.2108,
-                -0.2158,
-                0.2502,
-                -0.2055,
-                -0.0322,
-                0.1109,
-                0.1567,
-                -0.0729,
-                0.0899,
-                -0.2799,
-                -0.1230,
-                -0.0313,
-                -0.1649,
-                0.0117,
-                0.0723,
-                -0.2839,
-                -0.2083,
-                -0.0520,
-                0.3748,
-                0.0152,
-                0.1957,
-                0.1433,
-                -0.2944,
-                0.3573,
-                -0.0548,
-                -0.1681,
-                -0.0667,
+                -0.2289, -0.0052, -0.1323, -0.2339, -0.2799,  0.0174,  0.1838,  0.1557,
+                -0.1382,  0.0542,  0.2813,  0.0891,  0.1570, -0.0098,  0.0375, -0.1825,
+                -0.2246, -0.1207, -0.0698,  0.5109,  0.2665, -0.2108, -0.2158,  0.2502,
+                -0.2055, -0.0322,  0.1109,  0.1567, -0.0729,  0.0899, -0.2799, -0.1230,
+                -0.0313, -0.1649,  0.0117,  0.0723, -0.2839, -0.2083, -0.0520,  0.3748,
+                 0.0152,  0.1957,  0.1433, -0.2944,  0.3573, -0.0548, -0.1681, -0.0667,
             ],
             dtype=dtype,
             device=device,
         )
         self.std = torch.tensor(
             [
-                0.4765,
-                1.0364,
-                0.4514,
-                1.1677,
-                0.5313,
-                0.4990,
-                0.4818,
-                0.5013,
-                0.8158,
-                1.0344,
-                0.5894,
-                1.0901,
-                0.6885,
-                0.6165,
-                0.8454,
-                0.4978,
-                0.5759,
-                0.3523,
-                0.7135,
-                0.6804,
-                0.5833,
-                1.4146,
-                0.8986,
-                0.5659,
-                0.7069,
-                0.5338,
-                0.4889,
-                0.4917,
-                0.4069,
-                0.4999,
-                0.6866,
-                0.4093,
-                0.5709,
-                0.6065,
-                0.6415,
-                0.4944,
-                0.5726,
-                1.2042,
-                0.5458,
-                1.6887,
-                0.3971,
-                1.0600,
-                0.3943,
-                0.5537,
-                0.5444,
-                0.4089,
-                0.7468,
-                0.7744,
+                0.4765, 1.0364, 0.4514, 1.1677, 0.5313, 0.4990, 0.4818, 0.5013,
+                0.8158, 1.0344, 0.5894, 1.0901, 0.6885, 0.6165, 0.8454, 0.4978,
+                0.5759, 0.3523, 0.7135, 0.6804, 0.5833, 1.4146, 0.8986, 0.5659,
+                0.7069, 0.5338, 0.4889, 0.4917, 0.4069, 0.4999, 0.6866, 0.4093,
+                0.5709, 0.6065, 0.6415, 0.4944, 0.5726, 1.2042, 0.5458, 1.6887,
+                0.3971, 1.0600, 0.3943, 0.5537, 0.5444, 0.4089, 0.7468, 0.7744,
             ],
             dtype=dtype,
             device=device,
         )
         self.scale = [self.mean, 1.0 / self.std]
 
-        # init model
         self.vae = (
             _video_vae(
                 pretrained_path=vae_pth, z_dim=z_dim, dim=c_dim, dim_mult=dim_mult, temperal_downsample=temperal_downsample
@@ -1082,5 +925,5 @@ class Wan2_2_VAE:
         self.vae = self.vae.to(*args, **kwargs)
         return self
 
-    def decode(self, z, group= None):
+    def decode(self, z, group=None):
         return self.vae.decode(z, self.scale, group=group).float().clamp_(-1, 1)
