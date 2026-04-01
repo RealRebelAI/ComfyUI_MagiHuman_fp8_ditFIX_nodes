@@ -8,6 +8,20 @@
 
 # REBELS fp8 daVinci-MagiHuman NODES
 
+
+UPDATE!!!
+made some changes to the nodes. do a git pull and re-run requirements.
+
+MUST USE NEW TEST WORKFLOW!!!! there are new nodes to unload weight of first model.
+
+if it runs for you, please post your generations in the discussions!!!!! i cant run it, its too big at 30gb of total size with everything.
+
+model details below with files link.
+
+
+
+
+
 EXPERIMENTAL! updates to the nodes are on pause until i can successfully generate with the model. ive made changes to the nodes but i will not commit them to github until the model runs. im sorry if you experienced any issues or wasted time testing the model. i will be sure to update the deacription as soon as it works.
 
 just merged the files to match another contributors workflow. this will lessen the requirements for lower vram users. its still a 16gb fp8 model and the SR model to upscale it heavy as well. working on offloading implementation without sage or triton. it will be in the workflow once i test it. i will update the repo with a SEPERATE offloading workflow check back soon.
