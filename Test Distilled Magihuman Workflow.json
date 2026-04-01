@@ -1,0 +1,1008 @@
+{
+  "id": "13d92c58-110a-4dfd-8abb-7a13f6b24a4d",
+  "revision": 0,
+  "last_node_id": 46,
+  "last_link_id": 113,
+  "nodes": [
+    {
+      "id": 15,
+      "type": "SaveVideo",
+      "pos": [
+        -970.103236355946,
+        94.6723578104261
+      ],
+      "size": [
+        699.1606522500001,
+        533.8319814999998
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "video",
+          "type": "VIDEO",
+          "link": 1
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.18.1",
+        "Node name for S&R": "SaveVideo",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        }
+      },
+      "widgets_values": [
+        "video/ComfyUI",
+        "mp4",
+        "h264"
+      ],
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 35,
+      "type": "MagiHuman_Rebel_VAE",
+      "pos": [
+        -2015.0023473489368,
+        275.562425813725
+      ],
+      "size": [
+        270,
+        82
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "vae",
+          "type": "VAE",
+          "links": [
+            75,
+            92
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "magihuman",
+        "ver": "e67e908ea11684e6009ab6c8640257a8204e9421",
+        "Node name for S&R": "MagiHuman_Rebel_VAE",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        }
+      },
+      "widgets_values": [
+        "Wan2.2_VAE.pth",
+        "none"
+      ],
+      "color": "#322",
+      "bgcolor": "#533"
+    },
+    {
+      "id": 43,
+      "type": "MagiHuman_Rebel_ENCODER",
+      "pos": [
+        -2705.3793189588805,
+        506.1651904655818
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 98
+        }
+      ],
+      "outputs": [
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "links": [
+            99
+          ]
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "links": [
+            100
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "magihuman",
+        "ver": "e67e908ea11684e6009ab6c8640257a8204e9421",
+        "Node name for S&R": "MagiHuman_Rebel_ENCODER",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        }
+      },
+      "widgets_values": [
+        true,
+        "the camera slowly zooms out as the man stands confidently, he speaks the words \"Welcome to Davinci Magihuman\"",
+        "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards, low quality, worst quality, poor quality, noise, background noise, hiss, hum, buzz, crackle, static, compression artifacts, MP3 artifacts, digital clipping, distortion, muffled, muddy, unclear, echo, reverb, room echo, over-reverberated, hollow sound, distant, washed out, harsh, shrill, piercing, grating, tinny, thin sound, boomy, bass-heavy, flat EQ, over-compressed, abrupt cut, jarring transition, sudden silence, looping artifact, music, instrumental, sirens, alarms, crowd noise, unrelated sound effects, chaotic, disorganized, messy, cheap sound , emotionless, flat delivery, deadpan, lifeless, apathetic, robotic, mechanical, monotone, flat intonation, undynamic, boring, reading from a script, AI voice, synthetic, text-to-speech, TTS, insincere, fake emotion, exaggerated, overly dramatic, melodramatic, cheesy, cringey, hesitant, unconfident, tired, weak voice, stuttering, stammering, mumbling, slurred speech, mispronounced, bad articulation, lisp, vocal fry, creaky voice, mouth clicks, lip smacks, wet mouth sounds, heavy breathing, audible inhales, plosives, p-pops, coughing, clearing throat, sneezing, speaking too fast, rushed, speaking too slow, dragged out, unnatural pauses, awkward silence, choppy, disjointed, multiple speakers, two voices, background talking, out of tune, off-key, autotune artifacts"
+      ],
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 26,
+      "type": "ImageResizeKJv2",
+      "pos": [
+        -2297.642092063399,
+        107.10267466050101
+      ],
+      "size": [
+        274.6277479864593,
+        593.7452410995365
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 36
+        },
+        {
+          "name": "mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            77
+          ]
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "links": [
+            80
+          ]
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": [
+            79
+          ]
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-kjnodes",
+        "ver": "7519171dd6b6ccea43091c6b73e42443bba11f5b",
+        "Node name for S&R": "ImageResizeKJv2",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        }
+      },
+      "widgets_values": [
+        256,
+        256,
+        "lanczos",
+        "resize",
+        "0, 0, 0",
+        "center",
+        2,
+        "cpu"
+      ],
+      "color": "#2a363b",
+      "bgcolor": "#3f5159"
+    },
+    {
+      "id": 37,
+      "type": "MagiHuman_Rebel_Clip",
+      "pos": [
+        -2013.8454103523227,
+        492.303002759541
+      ],
+      "size": [
+        268.84306300338517,
+        82
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "links": [
+            98
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "magihuman",
+        "ver": "e67e908ea11684e6009ab6c8640257a8204e9421",
+        "Node name for S&R": "MagiHuman_Rebel_Clip",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        }
+      },
+      "widgets_values": [
+        "none",
+        "t5gemma-9b-9b-ul2-Q6_K.gguf"
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 36,
+      "type": "MagiHuman_Rebel_AUDIO_VAE",
+      "pos": [
+        -2011.7328465188777,
+        395.46737614288287
+      ],
+      "size": [
+        266.49342062656626,
+        58
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "audio_vae",
+          "type": "VAE",
+          "links": [
+            76,
+            95
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "magihuman",
+        "ver": "e67e908ea11684e6009ab6c8640257a8204e9421",
+        "Node name for S&R": "MagiHuman_Rebel_AUDIO_VAE",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        }
+      },
+      "widgets_values": [
+        "sd_audio.safetensors"
+      ],
+      "color": "#322",
+      "bgcolor": "#533"
+    },
+    {
+      "id": 2,
+      "type": "LoadImage",
+      "pos": [
+        -2702.0684633598758,
+        108.39734287272672
+      ],
+      "size": [
+        396.79877847499984,
+        356.384596925
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            36
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.18.1",
+        "Node name for S&R": "LoadImage",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        }
+      },
+      "widgets_values": [
+        "Grok Lora__00063_.png",
+        "image"
+      ],
+      "color": "#2a363b",
+      "bgcolor": "#3f5159"
+    },
+    {
+      "id": 42,
+      "type": "MagiHuman_Rebel_DECO_AUDIO",
+      "pos": [
+        -1252.158365852276,
+        192.82569621261266
+      ],
+      "size": [
+        259.921484375,
+        46
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "audio_vae",
+          "type": "VAE",
+          "link": 95
+        },
+        {
+          "name": "audio_latents",
+          "type": "LATENT",
+          "link": 111
+        }
+      ],
+      "outputs": [
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "links": [
+            97
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "magihuman",
+        "ver": "e67e908ea11684e6009ab6c8640257a8204e9421",
+        "Node name for S&R": "MagiHuman_Rebel_DECO_AUDIO",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        }
+      },
+      "widgets_values": [],
+      "color": "#322",
+      "bgcolor": "#533"
+    },
+    {
+      "id": 14,
+      "type": "CreateVideo",
+      "pos": [
+        -1247.740369387311,
+        284.6872496237688
+      ],
+      "size": [
+        249.4534981590391,
+        80.65734149999992
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 94
+        },
+        {
+          "name": "audio",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": 97
+        }
+      ],
+      "outputs": [
+        {
+          "name": "VIDEO",
+          "type": "VIDEO",
+          "links": [
+            1
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.18.1",
+        "Node name for S&R": "CreateVideo",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        }
+      },
+      "widgets_values": [
+        25
+      ],
+      "color": "#322",
+      "bgcolor": "#533"
+    },
+    {
+      "id": 38,
+      "type": "MagiHuman_Rebel_LATENTS",
+      "pos": [
+        -1738.075975135336,
+        106.88841610406492
+      ],
+      "size": [
+        232.6734375,
+        261.32924077060534
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "vae",
+          "shape": 7,
+          "type": "VAE",
+          "link": 75
+        },
+        {
+          "name": "audio_vae",
+          "shape": 7,
+          "type": "VAE",
+          "link": 76
+        },
+        {
+          "name": "image",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 77
+        },
+        {
+          "name": "audio",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": null
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "widget": {
+            "name": "width"
+          },
+          "link": 80
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "widget": {
+            "name": "height"
+          },
+          "link": 79
+        }
+      ],
+      "outputs": [
+        {
+          "name": "latent",
+          "type": "LATENT",
+          "links": [
+            82
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "magihuman",
+        "ver": "e67e908ea11684e6009ab6c8640257a8204e9421",
+        "Node name for S&R": "MagiHuman_Rebel_LATENTS",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        }
+      },
+      "widgets_values": [
+        448,
+        448,
+        0,
+        0,
+        2
+      ],
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 41,
+      "type": "MagiHuman_Rebel_EN_DECO_VIDEO",
+      "pos": [
+        -1258.7325945541652,
+        104.30844660161452
+      ],
+      "size": [
+        282.90390625,
+        46
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 92
+        },
+        {
+          "name": "latent",
+          "type": "LATENT",
+          "link": 110
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": [
+            94
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "magihuman",
+        "ver": "e67e908ea11684e6009ab6c8640257a8204e9421",
+        "Node name for S&R": "MagiHuman_Rebel_EN_DECO_VIDEO",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        }
+      },
+      "widgets_values": [],
+      "color": "#322",
+      "bgcolor": "#533"
+    },
+    {
+      "id": 39,
+      "type": "MagiHuman_Rebel_KSampler",
+      "pos": [
+        -1506.4755997194197,
+        107.70934666962292
+      ],
+      "size": [
+        234.040625,
+        262
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 81
+        },
+        {
+          "name": "latents",
+          "type": "LATENT",
+          "link": 82
+        },
+        {
+          "name": "positive",
+          "shape": 7,
+          "type": "CONDITIONING",
+          "link": 99
+        },
+        {
+          "name": "negative",
+          "shape": 7,
+          "type": "CONDITIONING",
+          "link": 100
+        }
+      ],
+      "outputs": [
+        {
+          "name": "latent",
+          "type": "LATENT",
+          "links": [
+            109
+          ]
+        },
+        {
+          "name": "audio_latents",
+          "type": "LATENT",
+          "links": [
+            108
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "magihuman",
+        "ver": "e67e908ea11684e6009ab6c8640257a8204e9421",
+        "Node name for S&R": "MagiHuman_Rebel_KSampler",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        }
+      },
+      "widgets_values": [
+        8,
+        1510100336,
+        "randomize",
+        true,
+        1,
+        true,
+        false
+      ],
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 34,
+      "type": "MagiHuman_Rebel_Model",
+      "pos": [
+        -2016.149703017876,
+        106.51213047315927
+      ],
+      "size": [
+        273.0309439720842,
+        130
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "links": [
+            81,
+            112
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "magihuman",
+        "ver": "e67e908ea11684e6009ab6c8640257a8204e9421",
+        "Node name for S&R": "MagiHuman_Rebel_Model",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        }
+      },
+      "widgets_values": [
+        "davinci_distilled_FINAL.safetensors",
+        "magihuman_1080p_sr_FINAL.safetensors",
+        "none",
+        "none"
+      ],
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 45,
+      "type": "MagiHuman_Rebel_SRSampler",
+      "pos": [
+        -1717.9032935096645,
+        495.1443754251335
+      ],
+      "size": [
+        416.3924862319608,
+        122
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 113
+        },
+        {
+          "name": "latents",
+          "type": "LATENT",
+          "link": 109
+        },
+        {
+          "name": "audio_latents",
+          "type": "LATENT",
+          "link": 108
+        }
+      ],
+      "outputs": [
+        {
+          "name": "latent",
+          "type": "LATENT",
+          "links": [
+            110
+          ]
+        },
+        {
+          "name": "audio_latents",
+          "type": "LATENT",
+          "links": [
+            111
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "magihuman",
+        "ver": "e67e908ea11684e6009ab6c8640257a8204e9421",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        },
+        "Node name for S&R": "MagiHuman_Rebel_SRSampler"
+      },
+      "widgets_values": [
+        5,
+        true
+      ],
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 46,
+      "type": "MagiHuman_UnloadDiT",
+      "pos": [
+        -1720.152279936164,
+        420.48577187597976
+      ],
+      "size": [
+        425.1164177764216,
+        26
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 112
+        }
+      ],
+      "outputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "links": [
+            113
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "magihuman",
+        "ver": "e67e908ea11684e6009ab6c8640257a8204e9421",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {}
+        },
+        "Node name for S&R": "MagiHuman_UnloadDiT"
+      },
+      "color": "#232",
+      "bgcolor": "#353"
+    }
+  ],
+  "links": [
+    [
+      1,
+      14,
+      0,
+      15,
+      0,
+      "VIDEO"
+    ],
+    [
+      36,
+      2,
+      0,
+      26,
+      0,
+      "IMAGE"
+    ],
+    [
+      75,
+      35,
+      0,
+      38,
+      0,
+      "VAE"
+    ],
+    [
+      76,
+      36,
+      0,
+      38,
+      1,
+      "VAE"
+    ],
+    [
+      77,
+      26,
+      0,
+      38,
+      2,
+      "IMAGE"
+    ],
+    [
+      79,
+      26,
+      2,
+      38,
+      5,
+      "INT"
+    ],
+    [
+      80,
+      26,
+      1,
+      38,
+      4,
+      "INT"
+    ],
+    [
+      81,
+      34,
+      0,
+      39,
+      0,
+      "MODEL"
+    ],
+    [
+      82,
+      38,
+      0,
+      39,
+      1,
+      "LATENT"
+    ],
+    [
+      92,
+      35,
+      0,
+      41,
+      0,
+      "VAE"
+    ],
+    [
+      94,
+      41,
+      0,
+      14,
+      0,
+      "IMAGE"
+    ],
+    [
+      95,
+      36,
+      0,
+      42,
+      0,
+      "VAE"
+    ],
+    [
+      97,
+      42,
+      0,
+      14,
+      1,
+      "AUDIO"
+    ],
+    [
+      98,
+      37,
+      0,
+      43,
+      0,
+      "CLIP"
+    ],
+    [
+      99,
+      43,
+      0,
+      39,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      100,
+      43,
+      1,
+      39,
+      3,
+      "CONDITIONING"
+    ],
+    [
+      108,
+      39,
+      1,
+      45,
+      2,
+      "LATENT"
+    ],
+    [
+      109,
+      39,
+      0,
+      45,
+      1,
+      "LATENT"
+    ],
+    [
+      110,
+      45,
+      0,
+      41,
+      1,
+      "LATENT"
+    ],
+    [
+      111,
+      45,
+      1,
+      42,
+      1,
+      "LATENT"
+    ],
+    [
+      112,
+      34,
+      0,
+      46,
+      0,
+      "MODEL"
+    ],
+    [
+      113,
+      46,
+      0,
+      45,
+      0,
+      "MODEL"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ue_links": [],
+    "ds": {
+      "scale": 0.5324235668810703,
+      "offset": [
+        2881.0306457729453,
+        148.7494282940936
+      ]
+    },
+    "links_added_by_ue": [],
+    "frontendVersion": "1.42.8"
+  },
+  "version": 0.4
+}
