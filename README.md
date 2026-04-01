@@ -18,6 +18,15 @@ if it runs for you, please post your generations in the discussions!!!!! i cant 
 
 model details below with files link.
 
+-
+-
+-
+-
+-
+-
+-
+-
+-
 
 
 
