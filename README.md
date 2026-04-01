@@ -8,9 +8,9 @@
 
 # REBELS fp8 daVinci-MagiHuman NODES
 
-EXPERIMENTAL! please test for me, my gpu is too small to hold the model 😅
+EXPERIMENTAL! updates to the nodes are on pause until i can successfully generate with the model. ive made changes to the nodes but i will not commit them to github until the model runs. im sorry if you experienced any issues or wasted time testing the model. i will be sure to update the deacription as soon as it works.
 
-have not tested, just merged the files to match another contributors workflow. this will lessen the requirements for lower vram users. its still a 16gb fp8 model and the SR model to upscale it heavy as well. working on offloading implementation without sage or triton. it will be in the workflow once i test it. i will update the repo with a SEPERATE offloading workflow check back soon.
+just merged the files to match another contributors workflow. this will lessen the requirements for lower vram users. its still a 16gb fp8 model and the SR model to upscale it heavy as well. working on offloading implementation without sage or triton. it will be in the workflow once i test it. i will update the repo with a SEPERATE offloading workflow check back soon.
 
 THIS MODEL WILL NOT RUN WITHOUT MY CUSTOM NODE SET. ITS CURATED FOR THIS MODEL SPECIFICALLY!
 
