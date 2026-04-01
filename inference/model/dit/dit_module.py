@@ -12,38 +12,39 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
+import gc
 import importlib
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, List, Optional, Tuple
-import gc
+
 import torch
 import torch.nn as nn
 from einops import rearrange, repeat
-from ...common import Modality, VarlenHandler, is_hopper_arch
-from ...infra.parallelism import ulysses_scheduler
-# from magi_compiler import magi_compile
-from magi_compiler.api import magi_register_custom_op
-#from magi_compiler.config import CompileConfig
 from torch import Tensor
 from torch.nn import Parameter
-import copy
+
+from ...common import Modality, VarlenHandler, is_hopper_arch
+from ...infra.parallelism import ulysses_scheduler
+from magi_compiler.api import magi_register_custom_op
+
 
 class BlockGPUManager:
     def __init__(self, device="cuda", block_group_size=2):
         self.device = torch.device(device)
         self.managed_modules = []
         self.submodule = []
-        self.block_group_size = block_group_size  # 每次加载的连续层数
+        self.block_group_size = block_group_size
         self._original_model_ref = None
         self._original_layers_ref = None
-        self._num_groups = 0  # 总批次数
-        self._current_group = -1  # 当前正在计算的批次索引
-        self._prefetched_group = -1  # 预取中的批次索引
+        self._num_groups = 0
+        self._current_group = -1
+        self._prefetched_group = -1
         self._group_loaded: list[bool] = []
         self._group_ready_events: list[Optional[torch.cuda.Event]] = []
         self._prefetch_stream: Optional[torch.cuda.Stream] = None
-        self._parameter_pinned = False  # 只需 pin memory 一次
+        self._parameter_pinned = False
 
     def setup_for_inference(self, transformer_model):
         self._collect_managed_modules(transformer_model)
@@ -65,20 +66,25 @@ class BlockGPUManager:
         print(f"Total number of layers: {len(self._original_layers_ref)}")
         print(f"Total number of groups: {self._num_groups}")
 
-        # pin memory only for CPU path; if weights are already on GPU, move them back first.
         if self.device.type == "cuda" and not self._parameter_pinned:
             for layer in self._original_layers_ref:
                 if any(p.is_cuda for p in layer.parameters()):
                     layer.to("cpu")
                 for p in layer.parameters():
                     if not p.is_pinned():
-                        p.pin_memory()
+                        try:
+                            p.pin_memory()
+                        except RuntimeError:
+                            pass  # FP8 tensors cannot be pinned
                 for b in layer.buffers():
                     if not b.is_pinned():
-                        b.pin_memory()
+                        try:
+                            b.pin_memory()
+                        except RuntimeError:
+                            pass  # FP8 buffers cannot be pinned
             self._parameter_pinned = True
 
-        for attr in ['adapter', 'final_norm_video', 'final_norm_audio', 
+        for attr in ['adapter', 'final_norm_video', 'final_norm_audio',
                      'final_linear_video', 'final_linear_audio']:
             if hasattr(transformer_model, attr):
                 self.submodule.append(getattr(transformer_model, attr))
@@ -88,7 +94,6 @@ class BlockGPUManager:
         self._group_ready_events = [None] * self._num_groups
 
     def _get_layer(self, layer_index):
-        """按需获取批次中的层，实现双缓冲预取"""
         group_index = layer_index // self.block_group_size
         local_idx = layer_index % self.block_group_size
 
@@ -156,7 +161,7 @@ class BlockGPUManager:
             self._current_group = -1
         if self._prefetched_group == group_index:
             self._prefetched_group = -1
-        
+
         group = None
         del group
         torch.cuda.empty_cache()
@@ -165,17 +170,15 @@ class BlockGPUManager:
     def _initialize_submodule(self):
         for module in self.submodule:
             if hasattr(module, 'to'):
-                module.to(self.device)
+                module.to_empty(device=self.device)
         return self
 
     def unload_all_blocks_to_cpu(self):
-        # 卸载所有批次
         for group_index in range(self._num_groups):
             self._unload_group(group_index)
         self._current_group = -1
         self._prefetched_group = -1
-        
-        # 将embedder和output模块移到CPU
+
         for module in self.submodule:
             if hasattr(module, 'to'):
                 module.to('cpu')
@@ -193,10 +196,7 @@ class FFAHandler:
     softmax_scale: float
 
 
-# Define the MLP activation type
 class MLPActivationType(Enum):
-    """Enumeration of supported activation functions for MLP"""
-
     SWIGLU7 = "swiglu7"
     GELU7 = "gelu7"
 
@@ -205,22 +205,17 @@ def swiglu7(x, alpha: float = 1.702, limit: float = 7.0, out_dtype: Optional[tor
     out_dtype = x.dtype if out_dtype is None else out_dtype
     x = x.to(torch.float32)
     x_glu, x_linear = x[..., ::2], x[..., 1::2]
-    # Clamp the input values
     x_glu = x_glu.clamp(min=None, max=limit)
     x_linear = x_linear.clamp(min=-limit, max=limit)
     out_glu = x_glu * torch.sigmoid(alpha * x_glu)
-    # Note we add an extra bias of 1 to the linear layer (from GPT-OSS)
     return (out_glu * (x_linear + 1)).to(out_dtype)
 
 
 def gelu7(x, alpha: float = 1.702, limit: float = 7.0, out_dtype: Optional[torch.dtype] = None):
     out_dtype = x.dtype if out_dtype is None else out_dtype
     x = x.to(torch.float32)
-    x_glu = x
-    # Clamp the input values
-    x_glu = x_glu.clamp(min=None, max=limit)
+    x_glu = x.clamp(min=None, max=limit)
     out_glu = x_glu * torch.sigmoid(alpha * x_glu)
-    # Note we add an extra bias of 1 to the linear layer
     return out_glu.to(out_dtype)
 
 
@@ -241,28 +236,16 @@ class ModalityDispatcher:
     num_modalities: int
 
     def __init__(self, modality_mapping: torch.Tensor, num_modalities: int):
-        """
-        Initialize dispatcher.
-        This runs once during object construction and precomputes all mappings.
-        """
         self.modality_mapping = modality_mapping
         self.num_modalities = num_modalities
-
         self.permuted_modality_mapping = self._precompute_permute_mapping(modality_mapping)
-
         self.group_size = torch.bincount(self.permuted_modality_mapping, minlength=num_modalities).to(torch.int32)
         self.group_size_cpu: list[int] = [int(x) for x in self.group_size.to("cpu").tolist()]
 
     def _precompute_permute_mapping(self, modality_mapping):
-        # 1. Compute forward and inverse permutation mappings.
-        # argsort is an efficient O(N log N) operation.
         self.permute_mapping = torch.argsort(modality_mapping)
         self.inv_permute_mapping = torch.argsort(self.permute_mapping)
-
-        # 2. Compute group size for each modality.
-        # bincount is highly efficient for counting.
         permuted_modality_mapping = modality_mapping[self.permute_mapping]
-
         return permuted_modality_mapping
 
     def dispatch(self, x: torch.Tensor) -> list[torch.Tensor]:
@@ -274,12 +257,10 @@ class ModalityDispatcher:
 
     @staticmethod
     def permute(x: torch.Tensor, permute_mapping: torch.Tensor) -> torch.Tensor:
-        """Apply forward permutation to tensor."""
         return x[permute_mapping]
 
     @staticmethod
     def inv_permute(x: torch.Tensor, inv_permute_mapping: torch.Tensor) -> torch.Tensor:
-        """Apply inverse permutation to tensor."""
         return x[inv_permute_mapping]
 
 
@@ -287,7 +268,7 @@ def freq_bands(
     num_bands: int, temperature: float = 10000.0, step: int = 2, device: Optional[torch.device] = None
 ) -> torch.Tensor:
     exp = torch.arange(0, num_bands, step, dtype=torch.int64, device=device).to(torch.float32) / num_bands
-    bands = 1.0 / (temperature**exp)
+    bands = 1.0 / (temperature ** exp)
     return bands
 
 
@@ -301,15 +282,13 @@ def rotate_half(x, interleaved=False):
 
 
 def apply_rotary_emb_torch(x, cos, sin, interleaved=False):
-    """
-    x: (batch_size, seqlen, nheads, headdim)
-    cos, sin: (seqlen, rotary_dim / 2) or (batch_size, seqlen, rotary_dim / 2)
-    """
     ro_dim = cos.shape[-1] * 2
     assert ro_dim <= x.shape[-1]
     cos = repeat(cos, "... d -> ... 1 (2 d)" if not interleaved else "... d -> ... 1 (d 2)")
     sin = repeat(sin, "... d -> ... 1 (2 d)" if not interleaved else "... d -> ... 1 (d 2)")
-    return torch.cat([x[..., :ro_dim] * cos + rotate_half(x[..., :ro_dim], interleaved) * sin, x[..., ro_dim:]], dim=-1)
+    return torch.cat(
+        [x[..., :ro_dim] * cos + rotate_half(x[..., :ro_dim], interleaved) * sin, x[..., ro_dim:]], dim=-1
+    )
 
 
 class ElementWiseFourierEmbed(nn.Module):
@@ -333,7 +312,6 @@ class ElementWiseFourierEmbed(nn.Module):
         self.linear_bands = linear_bands
         self.device = device
         self.dtype = dtype
-        # Make frequency bands trainable or register as buffer
         bands = self.get_default_bands()
         if self.learnable:
             self.bands = nn.Parameter(bands)
@@ -341,31 +319,19 @@ class ElementWiseFourierEmbed(nn.Module):
             self.register_buffer("bands", bands)
 
     def forward(self, coords: torch.Tensor) -> torch.Tensor:
-        # Use slicing instead of unbind + stack to reduce intermediates
-        coords_xyz = coords[:, :3]  # [L,3] -> (t, h, w)
-        sizes = coords[:, 3:6]  # [L,3] -> (T, H, W)
-        refs = coords[:, 6:9]  # [L,3] -> (ref_T, ref_H, ref_W)
-
-        # Compute scale factors
-        scales = (refs - 1) / (sizes - 1)  # [L,3]
-
-        # NOTE: if both ref and size are 1, scale is fixed to 1; otherwise invalid
+        coords_xyz = coords[:, :3]
+        sizes = coords[:, 3:6]
+        refs = coords[:, 6:9]
+        scales = (refs - 1) / (sizes - 1)
         scales[(refs == 1) & (sizes == 1)] = 1
         assert not scales.isnan().any(), "scales has nan"
         assert not scales.isinf().any(), "scales has inf"
-
-        # Center alignment: apply to h,w only (not time)
-        centers = (sizes - 1) / 2  # [L,3]
-        centers[:, 0] = 0  # Do not center the time dimension
-        coords_xyz = coords_xyz - centers  # [L,3]
-
-        # Project to frequency bands in one shot: [L,3,B]
+        centers = (sizes - 1) / 2
+        centers[:, 0] = 0
+        coords_xyz = coords_xyz - centers
         proj = coords_xyz.unsqueeze(-1) * scales.unsqueeze(-1) * self.bands
-
-        # Compute sin & cos and concatenate
-        sin_proj = proj.sin()  # [L,3,B]
+        sin_proj = proj.sin()
         cos_proj = proj.cos()
-
         return torch.cat((sin_proj, cos_proj), dim=1).flatten(1)
 
     def reset_parameters(self):
@@ -391,13 +357,11 @@ class MultiModalityRMSNorm(nn.Module):
         self.dim = dim
         self.eps = eps
         self.num_modality = num_modality
-
         self.weight = torch.nn.Parameter(torch.zeros(dim * num_modality, device=device, dtype=torch.float32))
         if num_modality > 1:
             self.forward = self.forward_multi_experts
         else:
             self.forward = self.forward_single_expert
-
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -405,28 +369,25 @@ class MultiModalityRMSNorm(nn.Module):
 
     def rms(self, x: torch.Tensor) -> torch.Tensor:
         t, original_dtype = x.float(), x.dtype
-        t = t * torch.rsqrt(torch.mean(t**2, dim=-1, keepdim=True) + self.eps)
+        t = t * torch.rsqrt(torch.mean(t ** 2, dim=-1, keepdim=True) + self.eps)
         return t
 
     def forward_multi_experts(self, x: torch.Tensor, modality_dispatcher: ModalityDispatcher) -> torch.Tensor:
         original_dtype = x.dtype
         t = self.rms(x)
-
         weight_chunked = self.weight.chunk(self.num_modality, dim=0)
         t_list = modality_dispatcher.dispatch(t)
         for i in range(self.num_modality):
             t_list[i] = t_list[i] * (weight_chunked[i] + 1)
         t = modality_dispatcher.undispatch(*t_list)
-
         return t.to(original_dtype)
 
     def forward_single_expert(self, x: torch.Tensor, modality_dispatcher: Optional[ModalityDispatcher] = None) -> torch.Tensor:
         t, original_dtype = x.float(), x.dtype
-        t = t * torch.rsqrt(torch.mean(t**2, dim=-1, keepdim=True) + self.eps)
+        t = t * torch.rsqrt(torch.mean(t ** 2, dim=-1, keepdim=True) + self.eps)
         return (t * (self.weight + 1)).to(original_dtype)
 
 
-# --- FP8 INJECTION FIX: THE MATH ENGINE ---
 class _BF16ComputeLinear(torch.autograd.Function):
     @staticmethod
     def forward(
@@ -436,40 +397,28 @@ class _BF16ComputeLinear(torch.autograd.Function):
         bias: Optional[torch.Tensor],
         output_dtype: Optional[torch.dtype],
         compute_dtype: torch.dtype = torch.bfloat16,
-        weight_scale: Optional[torch.Tensor] = None, # Added param for FP8 scale
+        weight_scale: Optional[torch.Tensor] = None,
     ):
-        # FP8 Fast Path routing to Tensor Cores
         if weight.dtype == torch.float8_e4m3fn and weight_scale is not None:
-            # Dynamically quantize input to FP8 per-tensor absmax
             input_amax = torch.amax(torch.abs(input), dim=-1, keepdim=True)
-            input_scale = input_amax / 448.0 # FP8 E4M3 max value
+            input_scale = input_amax / 448.0
             input_fp8 = (input / input_scale).to(torch.float8_e4m3fn)
-            
-            # _scaled_mm handles the actual tensor core math
             output, _ = torch._scaled_mm(
                 input_fp8,
                 weight.t(),
                 out_dtype=compute_dtype,
                 scale_a=input_scale,
-                scale_b=weight_scale
+                scale_b=weight_scale,
             )
-            
             if bias is not None:
                 output = output + bias.to(compute_dtype)
-                
             return output.to(output_dtype)
 
-        # Fallback to standard precision if not FP8
         input_cast = input.to(compute_dtype)
         weight_cast = weight.to(compute_dtype)
         output = torch.matmul(input_cast, weight_cast.t())
-
         if bias is not None:
-            bias_cast = bias.to(compute_dtype)
-            output = output + bias_cast
-        else:
-            bias_cast = None
-
+            output = output + bias.to(compute_dtype)
         return output.to(output_dtype)
 
 
@@ -481,9 +430,7 @@ class BaseLinear(nn.Module):
     num_experts: int
     weight: Tensor
 
-    def __init__(
-        self, in_features, out_features, num_layers_for_initialization, num_experts, bias=True, device=None, dtype=None
-    ):
+    def __init__(self, in_features, out_features, num_layers_for_initialization, num_experts, bias=True, device=None, dtype=None):
         super().__init__()
         factory_kwargs = {"device": device, "dtype": torch.bfloat16}
         self.in_features = in_features
@@ -496,8 +443,6 @@ class BaseLinear(nn.Module):
             self.bias = Parameter(torch.empty(out_features * num_experts, **factory_kwargs))
         else:
             self.register_parameter("bias", None)
-            
-        # We pre-register the buffer so the state_dict loader doesn't crash
         self.register_buffer('weight_scale', None)
 
     def forward(
@@ -507,12 +452,9 @@ class BaseLinear(nn.Module):
         modality_dispatcher: Optional[ModalityDispatcher] = None,
     ) -> torch.Tensor:
         output_dtype = input.dtype if output_dtype is None else output_dtype
-        
-        # Check if we caught the FP8 scale from the loader
         scale = None
         if hasattr(self, 'weight__fp8_scale'):
             scale = getattr(self, 'weight__fp8_scale')
-            
         return _BF16ComputeLinear.apply(input, self.weight, self.bias, output_dtype, torch.bfloat16, scale)
 
 
@@ -524,19 +466,14 @@ class NativeMoELinear(BaseLinear):
         modality_dispatcher: Optional[ModalityDispatcher] = None,
     ) -> torch.Tensor:
         output_dtype = input.dtype if output_dtype is None else output_dtype
-
-        input_list = modality_dispatcher.dispatch(input)  # type: ignore
+        input_list = modality_dispatcher.dispatch(input)
         weight_chunked = self.weight.chunk(self.num_experts, dim=0)
-        
-        # Grab scales if they exist and chunk them
         scale_chunked = [None] * self.num_experts
         if hasattr(self, 'weight__fp8_scale'):
             scale = getattr(self, 'weight__fp8_scale')
             scale_chunked = scale.chunk(self.num_experts, dim=0)
-
         if self.bias is not None:
             bias_chunked = self.bias.chunk(self.num_experts, dim=0)
-
         for i in range(self.num_experts):
             input_list[i] = _BF16ComputeLinear.apply(
                 input_list[i],
@@ -544,9 +481,9 @@ class NativeMoELinear(BaseLinear):
                 bias_chunked[i] if self.bias is not None else None,
                 output_dtype,
                 torch.bfloat16,
-                scale_chunked[i]  # Pass the chunked scale
+                scale_chunked[i],
             )
-        return modality_dispatcher.undispatch(*input_list)  # type: ignore
+        return modality_dispatcher.undispatch(*input_list)
 
 
 def create_linear(
@@ -572,9 +509,9 @@ def flash_attn_func(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor)
             from flash_attn.flash_attn_interface import flash_attn_func as fa2_flash_attn_func
             return fa2_flash_attn_func(query, key, value)
     except ImportError:
-        # The Rebel AI Bypass: Native PyTorch SDPA
         import torch.nn.functional as F
         return F.scaled_dot_product_attention(query, key, value)
+
 
 def _split_q_range_with_no_overlap(
     q_ranges: torch.Tensor, k_ranges: torch.Tensor
@@ -598,7 +535,8 @@ def _split_q_range_with_no_overlap(
 
 
 def _flash_attn_with_correction(
-    query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, q_ranges: List[List[int]], k_range_list: List[List[List[int]]]
+    query: torch.Tensor, key: torch.Tensor, value: torch.Tensor,
+    q_ranges: List[List[int]], k_range_list: List[List[List[int]]]
 ):
     output = torch.zeros_like(query)
     output_lse = torch.zeros((query.shape[0], query.shape[1]), dtype=torch.float32, device=query.device)
@@ -615,7 +553,6 @@ def _flash_attn_with_correction(
         qo_out, qo_lse = None, None
         for k_range in k_ranges:
             k_start, k_end = k_range
-            
             if USE_FA:
                 cur_qo_out, cur_qo_lse, _ = flash_attn_func(
                     query[q_start:q_end].unsqueeze(0),
@@ -625,14 +562,14 @@ def _flash_attn_with_correction(
                 )
                 cur_qo_out, cur_qo_lse = cur_qo_out.squeeze(0), cur_qo_lse.squeeze(0)
             else:
-                # Native PyTorch Fallback
                 cur_qo_out = F.scaled_dot_product_attention(
                     query[q_start:q_end].unsqueeze(0),
                     key[k_start:k_end].unsqueeze(0),
-                    value[k_start:k_end].unsqueeze(0)
+                    value[k_start:k_end].unsqueeze(0),
                 ).squeeze(0)
-                # Generate a dummy LSE tensor to prevent the blending math from crashing
-                cur_qo_lse = torch.zeros((cur_qo_out.shape[0], cur_qo_out.shape[1]), dtype=torch.float32, device=query.device)
+                cur_qo_lse = torch.zeros(
+                    (cur_qo_out.shape[0], cur_qo_out.shape[1]), dtype=torch.float32, device=query.device
+                )
 
             if qo_out is None:
                 qo_out = cur_qo_out
@@ -644,8 +581,10 @@ def _flash_attn_with_correction(
                 qo_se, cur_qo_se = torch.exp(qo_lse - max_lse), torch.exp(cur_qo_lse - max_lse)
                 sum_se = qo_se + cur_qo_se
                 qo_scale, cur_qo_scale = qo_se / sum_se, cur_qo_se / sum_se
-
-                qo_out = qo_out * qo_scale.permute(1, 0).unsqueeze(-1) + cur_qo_out * cur_qo_scale.permute(1, 0).unsqueeze(-1)
+                qo_out = (
+                    qo_out * qo_scale.permute(1, 0).unsqueeze(-1)
+                    + cur_qo_out * cur_qo_scale.permute(1, 0).unsqueeze(-1)
+                )
                 qo_lse = torch.log(sum_se) + max_lse
 
         output[q_start:q_end] = qo_out
@@ -654,14 +593,16 @@ def _flash_attn_with_correction(
 
 
 def _custom_flex_flash_attn_func(
-    query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, q_ranges: torch.Tensor, k_ranges: torch.Tensor, **kwargs
+    query: torch.Tensor, key: torch.Tensor, value: torch.Tensor,
+    q_ranges: torch.Tensor, k_ranges: torch.Tensor, **kwargs
 ):
     q_ranges, k_range_list = _split_q_range_with_no_overlap(q_ranges, k_ranges)
     return _flash_attn_with_correction(query, key, value, q_ranges, k_range_list)
 
 
 def _flex_flash_attn_func_infer_output_meta(
-    query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, q_ranges: torch.Tensor, k_ranges: torch.Tensor
+    query: torch.Tensor, key: torch.Tensor, value: torch.Tensor,
+    q_ranges: torch.Tensor, k_ranges: torch.Tensor
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     output = torch.empty_like(query)
     output_lse = torch.empty((query.shape[0], query.shape[1]), dtype=torch.float32, device=query.device)
@@ -675,11 +616,11 @@ def _flex_flash_attn_func_infer_output_meta(
     is_subgraph_boundary=True,
 )
 def flex_flash_attn_func(
-    query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, q_ranges: torch.Tensor, k_ranges: torch.Tensor
+    query: torch.Tensor, key: torch.Tensor, value: torch.Tensor,
+    q_ranges: torch.Tensor, k_ranges: torch.Tensor
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     if HAS_MAGI_ATTENTION and is_hopper_arch():
         from magi_attention.api import flex_flash_attn_func as magi_flex_flash_attn_func
-
         return magi_flex_flash_attn_func(query, key, value, q_ranges, k_ranges)
     else:
         return _custom_flex_flash_attn_func(query, key, value, q_ranges, k_ranges)
@@ -702,7 +643,9 @@ def flash_attn_with_cp(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, cp_spl
     from ...infra.parallelism.all_to_all_primitive import batch_scatter_head_gather_seqlen, scatter_seqlen_gather_head
 
     if get_cp_world_size() > 1:
-        q, k, v = batch_scatter_head_gather_seqlen([q.squeeze(0), k.squeeze(0), v.squeeze(0)], cp_split_sizes, get_cp_group())
+        q, k, v = batch_scatter_head_gather_seqlen(
+            [q.squeeze(0), k.squeeze(0), v.squeeze(0)], cp_split_sizes, get_cp_group()
+        )
         q = q.unsqueeze(0)
         k = k.unsqueeze(0)
         v = v.unsqueeze(0)
@@ -767,10 +710,8 @@ class Attention(torch.nn.Module):
     def __init__(self, config: AttentionConfig):
         super().__init__()
         self.config = config
-
         self.pre_norm = MultiModalityRMSNorm(config.hidden_size, eps=1e-6, num_modality=config.num_modality)
         self.gating_size = config.num_heads_q if config.enable_attn_gating else 0
-
         self.linear_qkv = create_linear(
             config.hidden_size,
             config.num_heads_q * config.head_dim + config.num_heads_kv * config.head_dim * 2 + self.gating_size,
@@ -789,7 +730,6 @@ class Attention(torch.nn.Module):
         )
         self.q_norm = MultiModalityRMSNorm(config.head_dim, num_modality=config.num_modality)
         self.k_norm = MultiModalityRMSNorm(config.head_dim, num_modality=config.num_modality)
-
         self.q_size = config.num_heads_q * config.head_dim
         self.kv_size = config.num_heads_kv * config.head_dim
 
@@ -810,24 +750,19 @@ class Attention(torch.nn.Module):
     ) -> torch.Tensor:
         hidden_states = self.pre_norm(hidden_states, modality_dispatcher=modality_dispatcher).to(torch.bfloat16)
         qkv: torch.Tensor = self.linear_qkv(hidden_states, modality_dispatcher=modality_dispatcher).to(torch.float32)
-
         q, k, v, g = torch.split(qkv, [self.q_size, self.kv_size, self.kv_size, self.gating_size], dim=1)
         q = q.view(-1, self.config.num_heads_q, self.config.head_dim)
         k = k.view(-1, self.config.num_heads_kv, self.config.head_dim)
         v = v.view(-1, self.config.num_heads_kv, self.config.head_dim)
         g = g.view(k.shape[0], self.config.num_heads_q, -1)
-
         q = self.q_norm(q, modality_dispatcher=modality_dispatcher)
         k = self.k_norm(k, modality_dispatcher=modality_dispatcher)
-
         q = ModalityDispatcher.inv_permute(q, inv_permute_mapping).unsqueeze(0)
         k = ModalityDispatcher.inv_permute(k, inv_permute_mapping).unsqueeze(0)
         v = ModalityDispatcher.inv_permute(v, inv_permute_mapping).unsqueeze(0)
-
         sin_emb, cos_emb = rope.tensor_split(2, -1)
         q = apply_rotary_emb_torch(q, cos_emb, sin_emb)
         k = apply_rotary_emb_torch(k, cos_emb, sin_emb)
-
         if self.config.use_local_attn:
             self_attn_out = flex_flash_attn_with_cp(
                 q, k, v, local_attn_handler.q_ranges, local_attn_handler.k_ranges, cp_split_sizes
@@ -835,10 +770,8 @@ class Attention(torch.nn.Module):
         else:
             self_attn_out = flash_attn_with_cp(q, k, v, cp_split_sizes)
         self_attn_out = ModalityDispatcher.permute(self_attn_out, permute_mapping)
-
         if self.config.enable_attn_gating:
             self_attn_out = self_attn_out * torch.sigmoid(g)
-
         self_attn_out = self_attn_out.view(-1, self.config.num_heads_q * self.config.head_dim).to(torch.bfloat16)
         out = self.linear_proj(self_attn_out, modality_dispatcher=modality_dispatcher)
         return out
@@ -863,7 +796,6 @@ class MLP(torch.nn.Module):
         num_experts = config.num_modality
         self.pre_norm = MultiModalityRMSNorm(config.hidden_size, num_modality=config.num_modality)
         intermediate_size_up = config.intermediate_size * 2 if config.gated_act else config.intermediate_size
-
         self.up_gate_proj = create_linear(
             config.hidden_size,
             intermediate_size_up,
@@ -912,7 +844,9 @@ class Adapter(torch.nn.Module):
         self.video_embedder = nn.Linear(config.video_in_channels, config.hidden_size, bias=True, dtype=torch.float32)
         self.text_embedder = nn.Linear(config.text_in_channels, config.hidden_size, bias=True, dtype=torch.float32)
         self.audio_embedder = nn.Linear(config.audio_in_channels, config.hidden_size, bias=True, dtype=torch.float32)
-        self.rope = ElementWiseFourierEmbed(config.hidden_size // config.num_attention_heads, in_pixels=False, learnable=False)
+        self.rope = ElementWiseFourierEmbed(
+            config.hidden_size // config.num_attention_heads, in_pixels=False, learnable=False
+        )
 
     def forward(
         self,
@@ -924,16 +858,12 @@ class Adapter(torch.nn.Module):
     ):
         rope = self.rope(coords_mapping)
         output_x = torch.zeros(x.shape[0], self.config.hidden_size, device=x.device, dtype=x.dtype)
-        # 确保输入到线性层的数据类型与参数类型一致
         text_input = x[text_mask, : self.config.text_in_channels].to(self.text_embedder.weight.dtype)
         audio_input = x[audio_mask, : self.config.audio_in_channels].to(self.audio_embedder.weight.dtype)
         video_input = x[video_mask, : self.config.video_in_channels].to(self.video_embedder.weight.dtype)
-        
-        # 确保输出的数据类型与output_x的数据类型一致
         output_x[text_mask] = self.text_embedder(text_input).to(output_x.dtype)
         output_x[audio_mask] = self.audio_embedder(audio_input).to(output_x.dtype)
         output_x[video_mask] = self.video_embedder(video_input).to(output_x.dtype)
-
         return output_x, rope
 
 
@@ -956,7 +886,6 @@ class TransFormerLayer(torch.nn.Module):
             enable_attn_gating=config.enable_attn_gating,
         )
         self.attention: Attention = Attention(attention_config)
-
         activation_type = MLPActivationType.GELU7 if layer_idx in config.gelu7_layers else MLPActivationType.SWIGLU7
         if activation_type == MLPActivationType.SWIGLU7:
             gated_act = True
@@ -990,19 +919,12 @@ class TransFormerLayer(torch.nn.Module):
         cp_split_sizes: List[int],
     ) -> torch.Tensor:
         attn_out = self.attention(
-            hidden_states,
-            rope,
-            permute_mapping,
-            inv_permute_mapping,
-            varlen_handler,
-            local_attn_handler,
-            modality_dispatcher,
-            cp_split_sizes,
+            hidden_states, rope, permute_mapping, inv_permute_mapping,
+            varlen_handler, local_attn_handler, modality_dispatcher, cp_split_sizes,
         )
         if self.post_norm:
             attn_out = self.attn_post_norm(attn_out, modality_dispatcher=modality_dispatcher)
         hidden_states = hidden_states + attn_out
-
         mlp_out = self.mlp(hidden_states, modality_dispatcher)
         if self.post_norm:
             mlp_out = self.mlp_post_norm(mlp_out, modality_dispatcher=modality_dispatcher)
@@ -1013,16 +935,15 @@ class TransFormerLayer(torch.nn.Module):
 is_base_model = True
 
 
-def config_patch(compile_config) :
+def config_patch(compile_config):
     global is_base_model
     if is_base_model:
         is_base_model = False
     else:
-        # Fully offload SR model for memory-constrained GPU
         compile_config.offload_config.gpu_resident_weight_ratio = 0.0
     return compile_config
-       
-# #@magi_compile(config_patch=config_patch)
+
+
 class TransformerBlock(torch.nn.Module):
     def __init__(self, model_config: Any):
         super().__init__()
@@ -1047,19 +968,12 @@ class TransformerBlock(torch.nn.Module):
                 layer = gpu_manager._get_layer(layer_index)
             else:
                 layer = self.layers[layer_index]
-            
             x = layer(
-                x,
-                rope,
-                permute_mapping,
-                inv_permute_mapping,
-                varlen_handler,
-                local_attn_handler,
-                modality_dispatcher,
-                cp_split_sizes,
+                x, rope, permute_mapping, inv_permute_mapping,
+                varlen_handler, local_attn_handler, modality_dispatcher, cp_split_sizes,
             )
-        
         return x
+
 
 @dataclass
 class TransformerConfig:
@@ -1118,16 +1032,17 @@ class DiTModel(torch.nn.Module):
         cp_split_sizes = ulysses_scheduler().cp_split_sizes
 
         modality_dispatcher = ModalityDispatcher(modality_mapping, 3)
-        permute_mapping, inv_permute_mapping = modality_dispatcher.permute_mapping, modality_dispatcher.inv_permute_mapping
+        permute_mapping = modality_dispatcher.permute_mapping
+        inv_permute_mapping = modality_dispatcher.inv_permute_mapping
         video_mask = modality_mapping == Modality.VIDEO
         audio_mask = modality_mapping == Modality.AUDIO
         text_mask = modality_mapping == Modality.TEXT
+
         x, rope = self.adapter(x, coords_mapping, video_mask, audio_mask, text_mask)
         x = x.to(self.config.params_dtype)
         x = ModalityDispatcher.permute(x, permute_mapping)
         x = self.block(
-            x,
-            rope,
+            x, rope,
             permute_mapping=permute_mapping,
             inv_permute_mapping=inv_permute_mapping,
             varlen_handler=varlen_handler,
@@ -1147,7 +1062,8 @@ class DiTModel(torch.nn.Module):
         x_audio = self.final_linear_audio(x_audio)
 
         x_out = torch.zeros(
-            x.shape[0], max(self.config.video_in_channels, self.config.audio_in_channels), device=x.device, dtype=x_video.dtype
+            x.shape[0], max(self.config.video_in_channels, self.config.audio_in_channels),
+            device=x.device, dtype=x_video.dtype
         )
         x_out[video_mask, : self.config.video_in_channels] = x_video
         x_out[audio_mask, : self.config.audio_in_channels] = x_audio
